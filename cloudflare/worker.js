@@ -10,8 +10,8 @@ set -euo pipefail
 # Copyright (C) 2023 Akshat Kotpalliwar <inquiry.akshatkotpalliwar@gmail.com>
 # SPDX-License-Identifier: GPL-3.0-or-later
 
-REPO_URL="https://github.com/IntegerAlex/curlpad"
-BINARY_URL="https://github.com/IntegerAlex/curlpad/releases/latest/download/curlpad"
+REPO_URL="https://github.com/IntegerAlex/curl-pad"
+BINARY_URL="https://github.com/IntegerAlex/curl-pad/releases/latest/download/curlpad"
 INSTALL_DIR="\${HOME}/.local/bin"
 
 echo "🚀 Installing curlpad..."
