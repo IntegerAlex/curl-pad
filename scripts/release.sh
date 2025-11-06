@@ -82,10 +82,13 @@ echo "📝 Creating GitHub release..."
 gh release create "${TAG}" \
   --title "curlpad ${TAG}" \
   --notes "${RELEASE_NOTES}" \
+  --latest \
   dist/curlpad
 
 echo ""
 echo "✅ Release ${TAG} created successfully!"
 echo "📦 Binary uploaded: dist/curlpad"
 echo "🔗 View at: $(gh release view ${TAG} --json url -q .url)"
+echo ""
+echo "📦 Download URL: https://github.com/IntegerAlex/curl-pad/releases/latest/download/curlpad"
 
