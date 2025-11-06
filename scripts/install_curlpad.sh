@@ -33,7 +33,10 @@ while [[ $# -gt 0 ]]; do
       ;;
     --sudo)
       USE_SUDO=1
-      PREFIX="/usr/local/bin"
+      # If user did not set a custom prefix, default to /usr/local/bin
+      if [[ "$PREFIX" == "$PREFIX_DEFAULT" ]]; then
+        PREFIX="/usr/local/bin"
+      fi
       shift 1
       ;;
     --help|-h)

@@ -197,8 +197,8 @@ def create_template_file() -> str:
     """Create temporary file with curl template."""
     template = """#!/bin/bash
 # curlpad - scratchpad for curl.
-# AUTHOR - Akshat Kotpalliwar (alias IntegerAlex)
-# LICENSE - GPLv2 or later
+# AUTHOR - Akshat Kotpalliwar (alias IntegerAlex) <inquiry.akshatkotpalliwar@gmail.com>
+# SPDX-License-Identifier: GPL-3.0-or-later
 # curl -X POST "https://api.example.com" \\
 #   -H "Content-Type: application/json" \\
 #   -d '{"key":"value"}'
