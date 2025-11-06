@@ -4,18 +4,25 @@ A tiny terminal scratchpad for crafting and running `curl` commands with Vim/Neo
 
 ### Install
 
-- User install (recommended):
+Quick install (recommended):
 
 ```bash
-./scripts/install_curlpad.sh
-# installs to ~/.local/bin/curlpad
+curl -fsSL https://curlpad-installer.workers.dev/install.sh | bash
 ```
 
-- System-wide (needs sudo):
+Or download and inspect first:
 
 ```bash
-./scripts/install_curlpad.sh --sudo
-# installs to /usr/local/bin/curlpad
+curl -fsSL https://curlpad-installer.workers.dev/install.sh -o install.sh
+chmod +x install.sh
+./install.sh
+```
+
+From source:
+
+```bash
+./scripts/install_curlpad.sh           # user install (~/.local/bin)
+./scripts/install_curlpad.sh --sudo    # system-wide (/usr/local/bin)
 ```
 
 If `~/.local/bin` is not on PATH:
