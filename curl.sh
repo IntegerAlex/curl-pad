@@ -1,7 +1,8 @@
 #!/bin/bash
 
 # curlpad - A simple curl editor for the command line
-# Copyright (C) 2023 Akshat Kotpalliwar <akshat.kotpalliwar@agribid.ai>
+# Copyright (C) 2023 Akshat Kotpalliwar <inquiry.akshatkotpalliwar@gmail.com>
+# SPDX-License-Identifier: GPL-3.0-or-later
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
 # the Free Software Foundation, either version 3 of the License, or
