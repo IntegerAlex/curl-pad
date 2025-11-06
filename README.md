@@ -7,13 +7,13 @@ A tiny terminal scratchpad for crafting and running `curl` commands with Vim/Neo
 Quick install (recommended):
 
 ```bash
-curl -fsSL https://curlpad-installer.inquiry-akshatkotpalliwar.workers.dev/install.sh | bash
+curl -fsSL curlpad-installer.gossorg.in/install.sh | bash
 ```
 
 Or download and inspect first:
 
 ```bash
-curl -fsSL https://curlpad-installer.inquiry-akshatkotpalliwar.workers.dev/install.sh -o install.sh
+curl -fsSL curlpad-installer.gossorg.in/install.sh -o install.sh
 chmod +x install.sh
 ./install.sh
 ```

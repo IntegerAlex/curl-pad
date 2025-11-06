@@ -5,10 +5,10 @@ compatibility_date = "2024-01-01"
 # Worker configuration
 workers_dev = true
 
-# Routes (uncomment and configure for custom domain)
-# [[routes]]
-# pattern = "install.curlpad.dev/*"
-# zone_name = "curlpad.dev"
+# Routes for custom domain
+[[routes]]
+pattern = "curlpad-installer.gossorg.in/*"
+zone_name = "gossorg.in"
 
 # Environment variables (optional)
 # [vars]

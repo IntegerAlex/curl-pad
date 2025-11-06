@@ -67,7 +67,7 @@ RELEASE_NOTES="Release ${TAG}
 ## Installation
 
 \`\`\`bash
-curl -fsSL https://curlpad-installer.inquiry-akshatkotpalliwar.workers.dev/install.sh | bash
+curl -fsSL curlpad-installer.gossorg.in/install.sh | bash
 \`\`\`
 
 Or download the binary directly and place it on your PATH.
