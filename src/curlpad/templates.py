@@ -1,0 +1,171 @@
+"""
+Template file creation for curlpad.
+
+This module handles creation of template files and dictionaries:
+    - create_template_file(): Creates a temporary shell script template with curl examples
+    - create_curl_dict(): Creates a dictionary file for Vim/Neovim autocomplete
+
+Functions:
+    create_template_file() -> str
+        Create temporary file with curl command template
+        
+    create_curl_dict() -> str
+        Create temporary dictionary file for Vim completion with curl options
+
+Flow:
+    1. create_template_file() creates a .sh file with commented curl examples
+    2. create_curl_dict() creates a .dict file with curl options for autocomplete
+    3. Both files are added to temp_files list for cleanup
+    4. File paths are returned for use by editor module
+"""
+
+import os
+import tempfile
+
+from curlpad.utils import temp_files, debug_print, DEBUG
+from curlpad.output import print_error
+
+
+def create_template_file() -> str:
+    """
+    Create temporary file with curl command template.
+    
+    Creates a temporary shell script file with commented curl examples.
+    The file is created in the system temp directory with .sh extension.
+    The file is automatically added to temp_files list for cleanup on exit.
+    
+    Returns:
+        Path to the created template file
+        
+    Raises:
+        SystemExit: If file creation fails
+        
+    Template Content:
+        - Shebang line (#!/bin/bash)
+        - Header comments with author and license info
+        - Commented curl example command
+        - Empty line at end (where cursor will be positioned)
+        
+    Flow:
+        1. Create temporary file with .sh suffix
+        2. Add file path to temp_files list
+        3. Write template content to file
+        4. Return file path
+    """
+    template = """#!/bin/bash
+# curlpad - scratchpad for curl.
+# AUTHOR - Akshat Kotpalliwar (alias IntegerAlex) <inquiry.akshatkotpalliwar@gmail.com>
+# SPDX-License-Identifier: GPL-3.0-or-later
+# curl -X POST "https://api.example.com" \\
+#   -H "Content-Type: application/json" \\
+#   -d '{"key":"value"}'
+
+"""
+
+    # Create temporary file for template
+    # fd: File descriptor (integer) for the opened file
+    # tmpfile: Path to the created temporary template file (.sh extension)
+    # tempfile.mkstemp() creates a unique temporary file in the system temp directory
+    fd, tmpfile = tempfile.mkstemp(suffix='.sh')
+    
+    # Add template file to temp_files list for automatic cleanup on exit
+    # This ensures the file is deleted even if program crashes
+    temp_files.append(tmpfile)
+    debug_print(f"Created template file at: {tmpfile}")
+
+    try:
+        # Write template content to file
+        # os.fdopen(): Convert file descriptor to file object
+        # 'w': Write mode (text mode)
+        # template: String containing the template content (shebang, comments, example curl command)
+        with os.fdopen(fd, 'w') as f:
+            f.write(template)
+    except OSError as e:
+        # If file write fails, print error and exit
+        print_error(f"Failed to create template file: {e}")
+
+    return tmpfile
+
+
+def create_curl_dict() -> str:
+    """
+    Create temporary dictionary file for Vim/Neovim autocomplete.
+    
+    Creates a dictionary file containing curl options, HTTP methods,
+    common headers, and URLs. This dictionary is used by Vim/Neovim
+    for autocomplete when editing curl commands.
+    
+    Returns:
+        Path to the created dictionary file
+        
+    Raises:
+        SystemExit: If file creation fails
+        
+    Dictionary Content:
+        - HTTP methods: GET, POST, PUT, DELETE, PATCH, HEAD, OPTIONS
+        - curl options: -X, -H, -d, --header, --data, etc.
+        - Common headers: Content-Type:, application/json, etc.
+        - Common URLs: https://, http://, localhost, 127.0.0.1
+        
+    Flow:
+        1. Create temporary file with .dict suffix
+        2. Add file path to temp_files list
+        3. Write curl options (one per line) to file
+        4. Verify file content if DEBUG mode is enabled
+        5. Return file path
+    """
+    # curl_options: List of curl-related keywords for autocomplete
+    # This list contains all the words that will be available for autocomplete in the editor
+    # Includes:
+    #   - HTTP methods: GET, POST, PUT, DELETE, PATCH, HEAD, OPTIONS
+    #   - curl flags: -X, -H, -d, --header, --data, etc.
+    #   - Common headers: Content-Type:, application/json, etc.
+    #   - Common URLs: https://, http://, localhost, 127.0.0.1
+    # Each option is written as a separate line in the dictionary file
+    curl_options = [
+        '-X', 'GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'HEAD', 'OPTIONS',
+        '-H', '--header', 'Content-Type:', 'application/json', 'application/xml', 'text/plain',
+        '-d', '--data', '--data-raw', '--data-binary', '--data-urlencode',
+        '--url', '-i', '--include', '-v', '--verbose', '-s', '--silent',
+        '-o', '--output', '-L', '--location', '-k', '--insecure',
+        '--connect-timeout', '--max-time', '-u', '--user', '-x', '--proxy',
+        '--cert', '--key', '--cacert', '-A', '--user-agent',
+        '-b', '--cookie', '-c', '--cookie-jar', '-e', '--referer',
+        '-f', '--fail', '-I', '--head', '-m', '--max-redirs',
+        '--compressed', '--digest', '--negotiate', '--ntlm',
+        'curl', 'https://', 'http://', 'localhost', '127.0.0.1'
+    ]
+
+    # Create temporary dictionary file
+    # fd: File descriptor (integer) for the opened file
+    # dict_tmp: Path to the created temporary dictionary file (.dict extension)
+    # This file will be used by Vim/Neovim for dictionary-based autocomplete
+    fd, dict_tmp = tempfile.mkstemp(suffix='.dict')
+    
+    # Add dictionary file to temp_files list for automatic cleanup on exit
+    temp_files.append(dict_tmp)
+    debug_print(f"Created curl dictionary at: {dict_tmp} with {len(curl_options)} entries")
+
+    try:
+        # Write each curl option to the dictionary file (one per line)
+        # Vim/Neovim dictionary format: one word per line
+        # os.fdopen(): Convert file descriptor to file object
+        # 'w': Write mode (text mode)
+        with os.fdopen(fd, 'w') as f:
+            for option in curl_options:
+                f.write(f"{option}\n")
+        
+        # If DEBUG mode is enabled, verify dictionary file was created correctly
+        if DEBUG:
+            # lines: List of all lines in the dictionary file
+            # Used to verify file was written correctly
+            with open(dict_tmp, 'r') as f:
+                lines = f.readlines()
+                # Output first 5 lines for verification
+                debug_print(f"Dictionary file verified: {len(lines)} lines, first 5: {[l.strip() for l in lines[:5]]}")
+    except OSError as e:
+        # If file write fails, print error and exit
+        print_error(f"Failed to create dictionary file: {e}")
+
+    return dict_tmp
+

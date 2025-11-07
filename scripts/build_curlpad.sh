@@ -30,8 +30,14 @@ if [[ -f "$ROOT_DIR/dist/curlpad" ]]; then
   }
 fi
 
-# Build
-pyinstaller --clean --onefile --name curlpad curlpad.py
+# Build using spec file (works with modular structure)
+# The spec file uses curlpad.py as entry point, which imports from src/curlpad
+if [[ -f curlpad.spec ]]; then
+  pyinstaller --clean curlpad.spec
+else
+  # Fallback: build directly (will work if package is installed)
+  pyinstaller --clean --onefile --name curlpad curlpad.py
+fi
 
 echo "Built binary at: $ROOT_DIR/dist/curlpad"
 
