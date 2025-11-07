@@ -20,6 +20,7 @@ Flow:
 """
 
 import os
+import stat
 import tempfile
 
 from curlpad.utils import temp_files, debug_print, DEBUG
@@ -31,7 +32,7 @@ def create_template_file() -> str:
     Create temporary file with curl command template in secure temp directory.
 
     Creates a temporary shell script file with commented curl examples.
-    The file is created in a private temp directory with proper permissions.
+    The file is created atomically with proper permissions to prevent TOCTOU attacks.
     The file is automatically added to temp_files list for cleanup on exit.
 
     Returns:
@@ -47,11 +48,13 @@ def create_template_file() -> str:
         - Empty line at end (where cursor will be positioned)
 
     Flow:
-        1. Create temporary directory with secure permissions
-        2. Create temporary file in the secure directory
-        3. Add file path to temp_files list
-        4. Write template content to file
-        5. Return file path
+        1. Set secure umask atomically
+        2. Create temporary directory (automatically has 0o700 permissions)
+        3. Create temporary file with 0o600 permissions
+        4. Write template content atomically
+        5. Verify permissions
+        6. Add to temp_files list
+        7. Return file path
     """
     template = """#!/bin/bash
 # curlpad - scratchpad for curl.
@@ -63,28 +66,53 @@ def create_template_file() -> str:
 
 """
 
-    # Create temporary directory with secure permissions
-    with tempfile.TemporaryDirectory() as tdir:
-        # mode 0o700 by default on most systems; enforce if needed:
-        os.chmod(tdir, 0o700)
-
-        # Create temporary file in secure directory
-        with tempfile.NamedTemporaryFile(mode="w", suffix=".sh", delete=False, dir=tdir) as f:
-            tmpfile = f.name
-
-            # Add template file to temp_files list for automatic cleanup on exit
-            # This ensures the file is deleted even if program crashes
-            temp_files.append(tmpfile)
-            debug_print(f"Created template file at: {tmpfile}")
-
-            try:
-                # Write template content to file
+    # Set secure umask to ensure 0o700 directory and 0o600 file permissions
+    old_umask = os.umask(0o077)
+    
+    try:
+        # Create temporary directory with secure permissions (0o700 due to umask)
+        tdir = tempfile.mkdtemp()
+        
+        # Verify directory permissions
+        dir_stat = os.stat(tdir)
+        if stat.S_IMODE(dir_stat.st_mode) != 0o700:
+            # Force correct permissions if umask didn't work
+            os.chmod(tdir, 0o700)
+            debug_print(f"Forced secure permissions on temp directory: {tdir}")
+        
+        # Create temporary file with secure permissions atomically
+        fd, tmpfile = tempfile.mkstemp(suffix=".sh", dir=tdir)
+        
+        try:
+            # Set file permissions to 0o600 (owner read/write only)
+            os.fchmod(fd, 0o600)
+            
+            # Write template content atomically via file descriptor
+            with os.fdopen(fd, 'w') as f:
                 f.write(template)
-            except OSError as e:
-                # If file write fails, print error and exit
-                print_error(f"Failed to create template file: {e}")
-
+            
+            # Verify file permissions after write
+            file_stat = os.stat(tmpfile)
+            if stat.S_IMODE(file_stat.st_mode) != 0o600:
+                print_error(f"Failed to set secure permissions on template file: {tmpfile}")
+            
+            # Add to cleanup list AFTER successful write
+            temp_files.append(tmpfile)
+            debug_print(f"Created secure template file at: {tmpfile} (mode: 0o600)")
+            
             return tmpfile
+            
+        except OSError as e:
+            # Clean up file on error
+            try:
+                os.unlink(tmpfile)
+            except OSError:
+                pass
+            print_error(f"Failed to create template file: {e}")
+            
+    finally:
+        # Restore original umask
+        os.umask(old_umask)
 
 
 def create_curl_dict() -> str:
@@ -108,20 +136,14 @@ def create_curl_dict() -> str:
         - Common URLs: https://, http://, localhost, 127.0.0.1
 
     Flow:
-        1. Create temporary file in secure directory
-        2. Add file path to temp_files list
-        3. Write curl options (one per line) to file
-        4. Verify file content if DEBUG mode is enabled
-        5. Return file path
+        1. Set secure umask
+        2. Create temporary directory atomically
+        3. Create temporary file with secure permissions
+        4. Write curl options atomically
+        5. Verify permissions and content
+        6. Return file path
     """
     # curl_options: List of curl-related keywords for autocomplete
-    # This list contains all the words that will be available for autocomplete in the editor
-    # Includes:
-    #   - HTTP methods: GET, POST, PUT, DELETE, PATCH, HEAD, OPTIONS
-    #   - curl flags: -X, -H, -d, --header, --data, etc.
-    #   - Common headers: Content-Type:, application/json, etc.
-    #   - Common URLs: https://, http://, localhost, 127.0.0.1
-    # Each option is written as a separate line in the dictionary file
     curl_options = [
         '-X', 'GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'HEAD', 'OPTIONS',
         '-H', '--header', 'Content-Type:', 'application/json', 'application/xml', 'text/plain',
@@ -136,36 +158,57 @@ def create_curl_dict() -> str:
         'curl', 'https://', 'http://', 'localhost', '127.0.0.1'
     ]
 
-    # Create temporary directory with secure permissions
-    with tempfile.TemporaryDirectory() as tdir:
-        # mode 0o700 by default on most systems; enforce if needed:
-        os.chmod(tdir, 0o700)
-
-        # Create temporary dictionary file in secure directory
-        with tempfile.NamedTemporaryFile(mode="w", suffix=".dict", delete=False, dir=tdir) as f:
-            dict_tmp = f.name
-
-            # Add dictionary file to temp_files list for automatic cleanup on exit
-            temp_files.append(dict_tmp)
-            debug_print(f"Created curl dictionary at: {dict_tmp} with {len(curl_options)} entries")
-
-            try:
-                # Write each curl option to the dictionary file (one per line)
-                # Vim/Neovim dictionary format: one word per line
+    # Set secure umask
+    old_umask = os.umask(0o077)
+    
+    try:
+        # Create temporary directory with secure permissions
+        tdir = tempfile.mkdtemp()
+        
+        # Verify directory permissions
+        dir_stat = os.stat(tdir)
+        if stat.S_IMODE(dir_stat.st_mode) != 0o700:
+            os.chmod(tdir, 0o700)
+            debug_print(f"Forced secure permissions on dict temp directory: {tdir}")
+        
+        # Create temporary dictionary file atomically
+        fd, dict_tmp = tempfile.mkstemp(suffix=".dict", dir=tdir)
+        
+        try:
+            # Set file permissions to 0o600
+            os.fchmod(fd, 0o600)
+            
+            # Write dictionary content atomically via file descriptor
+            with os.fdopen(fd, 'w') as f:
                 for option in curl_options:
                     f.write(f"{option}\n")
-
-                # If DEBUG mode is enabled, verify dictionary file was created correctly
-                if DEBUG:
-                    # lines: List of all lines in the dictionary file
-                    # Used to verify file was written correctly
-                    with open(dict_tmp, 'r') as f:
-                        lines = f.readlines()
-                        # Output first 5 lines for verification
-                        debug_print(f"Dictionary file verified: {len(lines)} lines, first 5: {[l.strip() for l in lines[:5]]}")
-            except OSError as e:
-                # If file write fails, print error and exit
-                print_error(f"Failed to create dictionary file: {e}")
-
+            
+            # Verify file permissions
+            file_stat = os.stat(dict_tmp)
+            if stat.S_IMODE(file_stat.st_mode) != 0o600:
+                print_error(f"Failed to set secure permissions on dictionary file: {dict_tmp}")
+            
+            # Add to cleanup list AFTER successful write
+            temp_files.append(dict_tmp)
+            debug_print(f"Created secure curl dictionary at: {dict_tmp} with {len(curl_options)} entries (mode: 0o600)")
+            
+            # Verify content if DEBUG enabled
+            if DEBUG:
+                with open(dict_tmp, 'r') as vf:
+                    lines = vf.readlines()
+                    debug_print(f"Dictionary file verified: {len(lines)} lines, first 5: {[l.strip() for l in lines[:5]]}")
+            
             return dict_tmp
+            
+        except OSError as e:
+            # Clean up file on error
+            try:
+                os.unlink(dict_tmp)
+            except OSError:
+                pass
+            print_error(f"Failed to create dictionary file: {e}")
+            
+    finally:
+        # Restore original umask
+        os.umask(old_umask)
 

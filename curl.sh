@@ -72,7 +72,8 @@ install_deps() {
 }
 
 # Parse arguments
-case "$1" in
+# Use ${1:-} to handle unbound variable with set -u
+case "${1:-}" in
   --help|-h)
     show_help
     exit 0
@@ -89,7 +90,7 @@ case "$1" in
     # No args → proceed normally
     ;;
   *)
-    echo "Unknown option: $1"
+    echo "Unknown option: ${1:-}"
     show_help
     exit 1
     ;;
@@ -204,22 +205,15 @@ while IFS= read -r line || [[ -n "${line:-}" ]]; do
     exit 1
   fi
 
-  # Parse safely into an array and exec without shell
-  # shellcheck disable=SC2206
-  args=( $(printf '%s' "$line" | xargs -0 printf '%s\0' 2>/dev/null || true) )
-  # Fallback: robust parse with python if available
-  if [[ ${#args[@]} -eq 0 ]]; then
-    if command -v python3 >/dev/null 2>&1; then
-      mapfile -t args < <(python3 - <<'PY'
-import shlex, sys
-print("\n".join(shlex.split(sys.stdin.read())))
-PY
-      <<<"$line")
-    else
-      printf 'error: failed to parse line safely and python3 not available\n' >&2
-      rm -rf "$_tmpdir"
-      exit 1
-    fi
+  # Parse safely ONLY via python shlex (no shell expansion)
+  if command -v python3 >/dev/null 2>&1; then
+    mapfile -t args < <(python3 -c 'import shlex, sys; print("\n".join(shlex.split(sys.stdin.read())))' <<<"$line")
+  else
+    # Fallback: reject if python3 unavailable (required for safe parsing)
+    printf 'error: python3 required for safe parsing but not available\n' >&2
+    printf 'Install python3: sudo apt install python3\n' >&2
+    rm -rf "$_tmpdir"
+    exit 1
   fi
 
   echo "Executing: ${args[*]}"
@@ -232,7 +226,8 @@ PY
   echo "$line"
   echo "----------------------------------------"
 
-  read -p "Press Enter to run, or Ctrl+C to cancel... " _
+  printf 'Press Enter to run, or Ctrl+C to cancel... '
+  IFS= read -r _
 
   echo
   echo "▶ Running your cURL command(s)..."

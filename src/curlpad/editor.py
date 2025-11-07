@@ -30,11 +30,51 @@ from curlpad.templates import create_curl_dict
 from curlpad.utils import temp_files, debug_print, DEBUG
 
 
+def sanitize_lua_string(s: str) -> str:
+    """
+    Escape string for safe Lua interpolation.
+    
+    Prevents Lua code injection by escaping special characters.
+    
+    Args:
+        s: String to sanitize
+        
+    Returns:
+        Sanitized string safe for Lua string literals
+    """
+    # Escape backslashes first
+    s = s.replace('\\', '\\\\')
+    # Escape Lua string terminators
+    s = s.replace(']]', ']]..[[')
+    return s
+
+
+def sanitize_vim_string(s: str) -> str:
+    """
+    Escape string for safe Vimscript interpolation.
+    
+    Prevents Vimscript injection by escaping special characters.
+    
+    Args:
+        s: String to sanitize
+        
+    Returns:
+        Sanitized string safe for Vimscript string literals
+    """
+    # Escape backslashes first
+    s = s.replace('\\', '\\\\')
+    # Escape double quotes
+    s = s.replace('"', '\\"')
+    # Escape single quotes
+    s = s.replace("'", "\\'")
+    return s
+
+
 def create_editor_config(target_file: str) -> str:
     """
     Create temporary vimrc/lua file with curl completion settings.
     
-    Creates editor-specific configuration files:
+    Creates editor-specific configuration files with secure path handling:
         - Neovim: Lua configuration file (.lua)
         - Vim: Vimscript configuration file (.vimrc)
     
@@ -44,40 +84,55 @@ def create_editor_config(target_file: str) -> str:
         - Proper indentation settings
         - Keyboard shortcuts (Ctrl+Space or Ctrl+X Ctrl+K for completion)
     
+    Security:
+        - Validates target_file is under temp directory
+        - Sanitizes paths to prevent code injection
+        - Escapes special characters in Lua/Vimscript strings
+    
     Args:
         target_file: Path to the template file being edited
-                    Used for buffer-specific configuration
+                    Must be under system temp directory
         
     Returns:
         Path to the created configuration file
         
     Raises:
         SystemExit: If config file creation fails
+        ValueError: If target_file path is invalid
         
     Flow:
-        1. Create curl dictionary file for autocomplete
-        2. Detect editor type (nvim or vim)
-        3. Generate editor-specific config content
-        4. Create temporary config file (.lua or .vimrc)
-        5. Add file to temp_files list
-        6. Return config file path
+        1. Validate target_file path
+        2. Create curl dictionary file for autocomplete
+        3. Detect editor type (nvim or vim)
+        4. Sanitize paths for safe interpolation
+        5. Generate editor-specific config content
+        6. Create temporary config file (.lua or .vimrc)
+        7. Add file to temp_files list
+        8. Return config file path
     """
-    # dict_file: Path to dictionary file containing curl options for autocomplete
-    # Created by create_curl_dict() in templates.py
-    # Contains curl options, HTTP methods, headers, etc. (one per line)
+    # Validate target_file is under temp directory (prevent path traversal)
+    target_file_abs = os.path.abspath(target_file)
+    temp_dir = tempfile.gettempdir()
+    
+    if not target_file_abs.startswith(temp_dir):
+        raise ValueError(f"Invalid target file path: {target_file_abs} (not under temp directory)")
+    
+    debug_print(f"Validated target_file: {target_file_abs}")
+    
+    # Create curl dictionary file
     dict_file = create_curl_dict()
     
-    # editor: Editor name ('nvim' or 'vim')
-    # Detected by get_editor() in dependencies.py
-    # Prefers nvim over vim for better Lua support
+    # Detect editor
     editor = get_editor()
 
     if editor == 'nvim':
-        # Neovim Lua configuration
-        # Uses Lua API for better integration with Neovim
+        # Neovim Lua configuration with sanitized paths
+        dict_file_safe = sanitize_lua_string(dict_file)
+        target_file_safe = sanitize_lua_string(target_file_abs)
+        
         config_content = f'''-- Neovim Lua configuration for curl completion
-local dict_file = [[{dict_file}]]
-local target_path = [[{target_file}]]
+local dict_file = [[{dict_file_safe}]]
+local target_path = [[{target_file_safe}]]
 
 -- Enable syntax highlighting
 vim.cmd('syntax on')
@@ -132,7 +187,9 @@ vim.api.nvim_create_autocmd({{ 'BufEnter', 'BufWinEnter' }}, {{
 '''
         suffix = '.lua'
     else:
-        # Vimscript configuration for regular Vim
+        # Vimscript configuration with sanitized paths
+        dict_file_safe = sanitize_vim_string(dict_file)
+        
         config_content = f'''set nocompatible
 syntax on
 filetype plugin indent on
@@ -145,7 +202,7 @@ set expandtab
 set backspace=indent,eol,start
 
 " Enable dictionary completion for curl commands
-set dictionary={dict_file}
+set dictionary={dict_file_safe}
 set complete+=k
 set completeopt=menu,menuone,preview
 

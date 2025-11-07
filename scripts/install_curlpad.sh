@@ -1,9 +1,19 @@
 #!/usr/bin/env bash
-set -euo pipefail
+set -Eeuo pipefail
 
 # Install the built curlpad binary onto PATH
 
-ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")"/.. && pwd)"
+# Security: Validate ROOT_DIR
+ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")/.." && pwd)" || {
+  echo "Error: Failed to determine ROOT_DIR" >&2
+  exit 1
+}
+
+[[ -d "$ROOT_DIR" ]] || {
+  echo "Error: Invalid ROOT_DIR: $ROOT_DIR" >&2
+  exit 1
+}
+
 cd "$ROOT_DIR"
 
 PREFIX_DEFAULT="$HOME/.local/bin"
@@ -28,7 +38,21 @@ while [[ $# -gt 0 ]]; do
         usage
         exit 2
       fi
-      PREFIX="$2"
+      
+      # Security: Validate PREFIX is an absolute path
+      case "${2}" in
+        /*) PREFIX="$2" ;;
+        *) echo "Error: --prefix must be an absolute path" >&2; exit 2 ;;
+      esac
+      
+      # Security: Prevent installation to sensitive system directories
+      case "$PREFIX" in
+        /|/bin|/usr/bin|/sbin|/usr/sbin|/boot|/dev|/proc|/sys)
+          echo "Error: Cannot install to protected system directory: $PREFIX" >&2
+          exit 2
+          ;;
+      esac
+      
       shift 2
       ;;
     --sudo)

@@ -1,9 +1,19 @@
 #!/usr/bin/env bash
-set -euo pipefail
+set -Eeuo pipefail
 
 # Build a standalone curlpad binary using PyInstaller
 
-ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")"/.. && pwd)"
+# Security: Validate ROOT_DIR is a directory
+ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")/.." && pwd)" || {
+  echo "Error: Failed to determine ROOT_DIR" >&2
+  exit 1
+}
+
+[[ -d "$ROOT_DIR" ]] || {
+  echo "Error: Invalid ROOT_DIR: $ROOT_DIR" >&2
+  exit 1
+}
+
 cd "$ROOT_DIR"
 
 if ! command -v python3 >/dev/null 2>&1; then
@@ -39,5 +49,27 @@ else
   pyinstaller --clean --onefile --name curlpad curlpad.py
 fi
 
-echo "Built binary at: $ROOT_DIR/dist/curlpad"
+BINARY_PATH="$ROOT_DIR/dist/curlpad"
+
+if [[ ! -f "$BINARY_PATH" ]]; then
+  echo "Error: Build failed - binary not found at $BINARY_PATH" >&2
+  exit 1
+fi
+
+echo "Built binary at: $BINARY_PATH"
+
+# Generate SHA256 hash for verification
+if command -v sha256sum >/dev/null 2>&1; then
+  cd "$ROOT_DIR/dist"
+  sha256sum curlpad > curlpad.sha256
+  echo "Generated hash file: $ROOT_DIR/dist/curlpad.sha256"
+  cat curlpad.sha256
+elif command -v shasum >/dev/null 2>&1; then
+  cd "$ROOT_DIR/dist"
+  shasum -a 256 curlpad > curlpad.sha256
+  echo "Generated hash file: $ROOT_DIR/dist/curlpad.sha256"
+  cat curlpad.sha256
+else
+  echo "Warning: sha256sum/shasum not found, skipping hash generation" >&2
+fi
 

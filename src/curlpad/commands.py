@@ -41,10 +41,33 @@ from curlpad.output import print_error, print_warning
 from curlpad.utils import debug_print
 
 _ALLOWED_CMD = "curl"
-# Add any other flags you want to disallow here
-_BLOCKED_FLAGS = {"--exec", "-e", "--eval"}
-# Optional: restrict to a minimal safe subset of flags if you want allowlist control
-# _ALLOWED_FLAGS = {"-s", "-S", "-v", "-o", "-O", "-L", "--max-time", "--retry", "--header", "-H", "--data", "--data-binary", "--url"}
+# Blocklist for known dangerous flags
+_BLOCKED_FLAGS = {"--exec", "-e", "--eval", "-K", "--config", "--write-out", "-w"}
+# Allowlist: Only permit known-safe flags (security-first approach)
+_ALLOWED_FLAGS = {
+    "-X", "GET", "POST", "PUT", "DELETE", "PATCH", "HEAD", "OPTIONS",
+    "-H", "--header", "-d", "--data", "--data-raw", "--data-binary", "--data-urlencode",
+    "--url", "-i", "--include", "-v", "--verbose", "-s", "--silent", "-S", "--show-error",
+    "-o", "--output", "-O", "--remote-name", "-L", "--location", "-k", "--insecure",
+    "--connect-timeout", "--max-time", "-m", "--max-redirs",
+    "-u", "--user", "-x", "--proxy", "--proxy-user",
+    "-A", "--user-agent", "-b", "--cookie", "-c", "--cookie-jar",
+    "-e", "--referer", "-f", "--fail", "-I", "--head",
+    "--compressed", "--digest", "--negotiate", "--ntlm", "--basic",
+    "--cert", "--key", "--cacert", "--capath",
+    "-4", "-6", "--ipv4", "--ipv6",
+    "-g", "--globoff", "-j", "--junk-session-cookies",
+    "-1", "--tlsv1", "--tlsv1.0", "--tlsv1.1", "--tlsv1.2", "--tlsv1.3",
+    "--ssl", "--ssl-reqd", "--sslv2", "--sslv3",
+    "-#", "--progress-bar", "-N", "--no-buffer",
+    "--raw", "--tr-encoding", "--no-keepalive", "--no-sessionid",
+    "--noproxy", "--local-port", "--interface", "--dns-servers",
+    "--keepalive-time", "--no-alpn", "--no-npn",
+    "--http1.0", "--http1.1", "--http2", "--http2-prior-knowledge",
+    "-0", "--http1.0"
+}
+# Dangerous shell metacharacters to block in entire command
+_DANGEROUS_PATTERNS = ['&&', '||', ';', '|', '$', '`', '$(', '${', '>', '<', '\n', '\r']
 
 
 def extract_commands(tmpfile: str) -> List[str]:
@@ -52,7 +75,7 @@ def extract_commands(tmpfile: str) -> List[str]:
     Extract uncommented curl commands from template file.
     
     Parses the template file and extracts curl commands, handling:
-        - Multiline commands (lines ending with \)
+        - Multiline commands (lines ending with backslash)
         - Continuation lines (lines starting with - or indented)
         - Commented lines (ignored)
         - Empty lines (ignored)
@@ -267,7 +290,7 @@ def format_json_with_jq(commands: List[str]) -> List[str]:
 
 def validate_command(command: str) -> bool:
     """
-    Strict validation of curl command syntax.
+    Strict allowlist-based validation of curl command syntax.
 
     Performs comprehensive validation to ensure the command is safe and
     looks like a valid curl command.
@@ -280,26 +303,73 @@ def validate_command(command: str) -> bool:
 
     Validation Rules:
         1. Command must start with 'curl' (after stripping whitespace)
-        2. Block known dangerous flags (--exec, -e, --eval)
-        3. Use shlex parsing to ensure proper command structure
+        2. Block multiline commands (newlines, carriage returns)
+        3. Block dangerous shell metacharacters (&&, ||, ;, |, $, `, etc.)
+        4. Use allowlist for flags - only permit known-safe curl options
+        5. Block known dangerous flags (--exec, -K/--config, -w/--write-out)
+        6. Use shlex parsing to ensure proper command structure
     """
     try:
         cmd = command.strip()
+        
+        # Basic validation
         if not cmd:
+            debug_print("Validation failed: empty command")
             return False
-        parts = shlex.split(cmd)  # posix parse by default
-        if not parts or parts[0] != _ALLOWED_CMD:
+        
+        # Block multiline commands
+        if '\n' in cmd or '\r' in cmd:
+            debug_print("Validation failed: multiline command detected")
             return False
-        # Block known-dangerous flags
-        for p in parts[1:]:
-            if p in _BLOCKED_FLAGS:
+        
+        # Block dangerous shell metacharacters in entire command
+        for pattern in _DANGEROUS_PATTERNS:
+            if pattern in cmd:
+                debug_print(f"Validation failed: dangerous pattern '{pattern}' detected")
                 return False
-        # Uncomment to enforce allowlist only:
-        # for p in parts[1:]:
-        #     if p.startswith('-') and p not in _ALLOWED_FLAGS:
-        #         return False
+        
+        # Parse command safely
+        parts = shlex.split(cmd, posix=True)
+        
+        # Must start with 'curl'
+        if not parts or parts[0] != _ALLOWED_CMD:
+            debug_print(f"Validation failed: command must start with 'curl', got '{parts[0] if parts else 'empty'}'")
+            return False
+        
+        # Validate each argument
+        i = 1
+        while i < len(parts):
+            part = parts[i]
+            
+            # Check if it's a flag
+            if part.startswith('-'):
+                # Extract flag name (handle -X GET vs --header=value)
+                flag = part.split('=')[0]
+                
+                # Block explicitly dangerous flags
+                if flag in _BLOCKED_FLAGS:
+                    debug_print(f"Validation failed: blocked flag '{flag}' detected")
+                    return False
+                
+                # Allowlist validation: Only permit known-safe flags
+                if flag not in _ALLOWED_FLAGS:
+                    debug_print(f"Validation failed: unknown/disallowed flag '{flag}'")
+                    return False
+            else:
+                # Non-flag argument (URL, header value, data, etc.)
+                # Check for shell metacharacters in arguments too
+                for pattern in ['`', '$(', '${']:
+                    if pattern in part:
+                        debug_print(f"Validation failed: shell metacharacter in argument '{part}'")
+                        return False
+            
+            i += 1
+        
+        debug_print(f"Validation passed for command: {cmd[:100]}...")
         return True
-    except ValueError:
+        
+    except (ValueError, AttributeError) as e:
+        debug_print(f"Validation failed: parsing error - {e}")
         return False
 
 

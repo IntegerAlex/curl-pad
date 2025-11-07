@@ -64,6 +64,38 @@ if ! curl -fsSL "\$BINARY_URL" -o "\$INSTALL_DIR/curlpad"; then
   exit 1
 fi
 
+# Download SHA256 hash for verification
+echo "Downloading hash file for verification..."
+HASH_URL="https://github.com/IntegerAlex/curl-pad/releases/latest/download/curlpad.sha256"
+if curl -fsSL "\$HASH_URL" -o "\$INSTALL_DIR/curlpad.sha256" 2>/dev/null; then
+  echo "Verifying binary integrity..."
+  cd "\$INSTALL_DIR"
+  if command -v sha256sum >/dev/null 2>&1; then
+    if sha256sum -c curlpad.sha256 >/dev/null 2>&1; then
+      echo "\${C_GREEN}[OK] Binary integrity verified\${C_RESET}"
+    else
+      echo "\${C_RED}[ERROR] Binary integrity check failed!\${C_RESET}" >&2
+      echo "The downloaded binary does not match the expected hash." >&2
+      echo "This could indicate a compromised download." >&2
+      rm -f curlpad curlpad.sha256
+      exit 1
+    fi
+  elif command -v shasum >/dev/null 2>&1; then
+    if shasum -a 256 -c curlpad.sha256 >/dev/null 2>&1; then
+      echo "\${C_GREEN}[OK] Binary integrity verified\${C_RESET}"
+    else
+      echo "\${C_RED}[ERROR] Binary integrity check failed!\${C_RESET}" >&2
+      rm -f curlpad curlpad.sha256
+      exit 1
+    fi
+  else
+    echo "\${C_YELLOW}[WARNING] sha256sum/shasum not found, skipping integrity check\${C_RESET}" >&2
+  fi
+  rm -f curlpad.sha256
+else
+  echo "\${C_YELLOW}[WARNING] Could not download hash file, skipping integrity check\${C_RESET}" >&2
+fi
+
 # Make executable
 chmod +x "\$INSTALL_DIR/curlpad"
 

@@ -1,11 +1,21 @@
 #!/usr/bin/env bash
-set -euo pipefail
+set -Eeuo pipefail
 
 # Create a GitHub release with built binary
 # Copyright (C) 2023 Akshat Kotpalliwar <inquiry.akshatkotpalliwar@gmail.com>
 # SPDX-License-Identifier: GPL-3.0-or-later
 
-ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")"/.. && pwd)"
+# Security: Validate ROOT_DIR
+ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")/.." && pwd)" || {
+  echo "❌ Failed to determine ROOT_DIR" >&2
+  exit 1
+}
+
+[[ -d "$ROOT_DIR" ]] || {
+  echo "❌ Invalid ROOT_DIR: $ROOT_DIR" >&2
+  exit 1
+}
+
 cd "$ROOT_DIR"
 
 # Check for gh CLI
@@ -24,10 +34,20 @@ if ! gh auth status >/dev/null 2>&1; then
   exit 1
 fi
 
-# Get version from curlpad.py
-VERSION=$(grep '^__version__ = ' curlpad.py | cut -d'"' -f2)
-if [[ -z "$VERSION" ]]; then
-  echo "❌ Could not extract version from curlpad.py" >&2
+# Get version from Python constants (secure extraction)
+if ! command -v python3 >/dev/null 2>&1; then
+  echo "❌ python3 is required" >&2
+  exit 1
+fi
+
+VERSION=$(python3 -c 'import sys; sys.path.insert(0, "src"); from curlpad.constants import __version__; print(__version__)' 2>/dev/null) || {
+  echo "❌ Could not extract version from curlpad.constants" >&2
+  exit 1
+}
+
+# Security: Validate version format (semantic versioning)
+if [[ ! "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+  echo "❌ Invalid version format: $VERSION (expected: X.Y.Z)" >&2
   exit 1
 fi
 
