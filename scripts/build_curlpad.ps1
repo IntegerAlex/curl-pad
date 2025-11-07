@@ -44,7 +44,7 @@ if (Test-Path $binaryPath) {
             } catch {
                 $retryCount++
                 if ($retryCount -lt $maxRetries) {
-                    Write-Host "Retry $retryCount/$maxRetries: Waiting before retry..."
+                    Write-Host "Retry ${retryCount}/${maxRetries}: Waiting before retry..."
                     Start-Sleep -Milliseconds 500
                 } else {
                     throw
