@@ -4,32 +4,48 @@ A tiny terminal scratchpad for crafting and running `curl` commands with Vim/Neo
 
 ### Install
 
-Quick install (recommended):
+**Windows (PowerShell):**
 
-```bash
-curl -fsSL curlpad-installer.gossorg.in/install.sh | bash
+```powershell
+# Quick install (recommended)
+irm curlpad-installer.gossorg.in/install.ps1 | iex
+
+# Or download and inspect first
+Invoke-WebRequest -Uri curlpad-installer.gossorg.in/install.ps1 -OutFile install.ps1
+.\install.ps1
 ```
 
-Or download and inspect first:
+**Linux/macOS (Bash):**
 
 ```bash
+# Quick install (recommended)
+curl -fsSL curlpad-installer.gossorg.in/install.sh | bash
+
+# Or download and inspect first
 curl -fsSL curlpad-installer.gossorg.in/install.sh -o install.sh
 chmod +x install.sh
 ./install.sh
 ```
 
-From source:
+**From source:**
 
 ```bash
+# Linux/macOS
 ./scripts/install_curlpad.sh           # user install (~/.local/bin)
 ./scripts/install_curlpad.sh --sudo    # system-wide (/usr/local/bin)
+
+# Windows
+.\scripts\install_curlpad.ps1
 ```
 
-If `~/.local/bin` is not on PATH:
+**PATH setup:**
 
-```bash
-export PATH="$HOME/.local/bin:$PATH"
-```
+- **Linux/macOS:** If `~/.local/bin` is not on PATH:
+  ```bash
+  export PATH="$HOME/.local/bin:$PATH"
+  ```
+
+- **Windows:** The installer will prompt you to add to PATH automatically.
 
 ### Build from source
 
@@ -55,9 +71,8 @@ Inside the editor:
 
 ### Requirements
 
-- Linux or macOS
-- `curl` (required)
-- `vim` or `nvim` (one required)
+- **Windows:** PowerShell 5.0+, `curl` (required), `vim` or `nvim` (one required)
+- **Linux/macOS:** `curl` (required), `vim` or `nvim` (one required)
 - `jq` (optional, for JSON formatting)
 
 ### License

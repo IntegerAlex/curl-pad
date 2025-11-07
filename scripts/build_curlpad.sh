@@ -20,6 +20,16 @@ fi
 python3 -m pip install --upgrade pip >/dev/null
 python3 -m pip install -r requirements.txt >/dev/null
 
+# Remove existing binary if it exists (to avoid permission errors)
+if [[ -f "$ROOT_DIR/dist/curlpad" ]]; then
+  echo "Removing existing binary: $ROOT_DIR/dist/curlpad"
+  rm -f "$ROOT_DIR/dist/curlpad" || {
+    echo "Warning: Could not remove existing binary (may be in use)" >&2
+    echo "Please close any running instances and try again." >&2
+    exit 1
+  }
+fi
+
 # Build
 pyinstaller --clean --onefile --name curlpad curlpad.py
 

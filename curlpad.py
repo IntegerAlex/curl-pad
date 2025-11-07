@@ -34,6 +34,7 @@ import signal
 import subprocess
 import sys
 import tempfile
+import shlex
 from typing import List
 from datetime import datetime
 
@@ -98,6 +99,50 @@ def print_success(message: str) -> None:
 def print_info(message: str) -> None:
     """Print info message."""
     print(f"{Colors.BLUE}ℹ {message}{Colors.RESET}")
+
+
+def confirm_execution(commands: List[str]) -> bool:
+    """Confirm execution, handling cases where stdin is unavailable."""
+    # Try to use stdin first (even if isatty() returns False in frozen binaries)
+    # With console=True, stdin should work even in frozen binaries
+    if sys.stdin is not None:
+        try:
+            # Try to use stdin - this works even if isatty() returns False
+            print("Press Enter to run, or Ctrl+C to cancel... ", end='', flush=True)
+            input()
+            return True
+        except KeyboardInterrupt:
+            print("\nOperation cancelled.")
+            return False
+        except (RuntimeError, EOFError, OSError) as exc:
+            debug_print(f"stdin unavailable: {exc}")
+            # Fall through to MessageBox fallback
+
+    # Fallback to MessageBox on Windows if stdin failed
+    if os.name == 'nt':
+        try:
+            import ctypes
+
+            MB_OKCANCEL = 0x00000001
+            MB_ICONINFORMATION = 0x00000040
+            IDOK = 1
+
+            message = "Run the following command(s)?\n\n" + "\n".join(commands)
+            result = ctypes.windll.user32.MessageBoxW(  # type: ignore[attr-defined]
+                None,
+                message,
+                "curlpad",
+                MB_OKCANCEL | MB_ICONINFORMATION,
+            )
+            if result == IDOK:
+                return True
+            print_info("Operation cancelled.")
+            return False
+        except Exception as exc:  # pragma: no cover - Windows specific
+            debug_print(f"Failed to show Windows prompt: {exc}")
+
+    print_warning("No interactive console detected; proceeding without confirmation.")
+    return True
 
 def check_command(command: str) -> bool:
     """Check if a command exists in PATH."""
@@ -348,11 +393,14 @@ echo "Curl autocomplete available: Press Ctrl+X Ctrl+K in insert mode for comple
         with os.fdopen(fd, 'w') as f:
             f.write(config_content)
         if DEBUG:
+            lines = config_content.split('\n')
             debug_print(f"Config file content ({len(config_content)} bytes):")
-            for i, line in enumerate(config_content.split('\n')[:20], 1):
+            for i, line in enumerate(lines[:20], 1):
                 debug_print(f"  {i:3d}: {line}")
-            if len(config_content.split('\n')) > 20:
-                debug_print(f"  ... ({len(config_content.split('\n')) - 20} more lines)")
+            total_lines = len(lines)
+            if total_lines > 20:
+                remaining_lines = total_lines - 20
+                debug_print(f"  ... ({remaining_lines} more lines)")
     except OSError as e:
         print_error(f"Failed to create config file: {e}")
 
@@ -513,13 +561,47 @@ def run_command(command: str) -> None:
     """Execute the curl command."""
     try:
         print(f"\n{Colors.CYAN}▶ Running your cURL command...{Colors.RESET}")
-        debug_print(f"Executing via bash -c: {command}")
-        result = subprocess.run(
-            ['bash', '-c', command],
-            capture_output=True,
-            text=True,
-            check=False
-        )
+
+        if os.name == 'nt':
+            debug_print(f"Executing directly (Windows): {command}")
+            try:
+                args = shlex.split(command, posix=True)
+            except ValueError as exc:
+                print_warning(f"Failed to parse command; running via cmd.exe: {exc}")
+                args = None
+
+            creationflags = getattr(subprocess, 'CREATE_NO_WINDOW', 0)
+
+            if args:
+                if args and args[0].lower() == 'curl':
+                    curl_exe = shutil.which('curl.exe') or shutil.which('curl')
+                    if curl_exe:
+                        args[0] = curl_exe
+                    else:
+                        args[0] = 'curl.exe'
+                result = subprocess.run(
+                    args,
+                    capture_output=True,
+                    text=True,
+                    check=False,
+                    creationflags=creationflags,
+                )
+            else:
+                result = subprocess.run(
+                    ['cmd', '/c', command],
+                    capture_output=True,
+                    text=True,
+                    check=False,
+                    creationflags=creationflags,
+                )
+        else:
+            debug_print(f"Executing via bash -c: {command}")
+            result = subprocess.run(
+                ['bash', '-c', command],
+                capture_output=True,
+                text=True,
+                check=False
+            )
 
         # Print stdout
         if result.stdout:
@@ -619,10 +701,7 @@ def main():
     print("----------------------------------------")
 
     # Prompt for confirmation
-    try:
-        input("Press Enter to run, or Ctrl+C to cancel... ")
-    except KeyboardInterrupt:
-        print("\nOperation cancelled.")
+    if not confirm_execution(commands):
         return
 
     # Execute commands
@@ -631,3 +710,4 @@ def main():
 
 if __name__ == '__main__':
     main()
+
