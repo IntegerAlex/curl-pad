@@ -110,26 +110,41 @@ def create_editor_config(target_file: str) -> str:
         7. Add file to temp_files list
         8. Return config file path
     """
+    debug_print(f"create_editor_config called with target_file: {target_file}")
+    
     # Validate target_file is under temp directory (prevent path traversal)
     target_file_abs = os.path.abspath(target_file)
     temp_dir = tempfile.gettempdir()
+    debug_print(f"Target file absolute path: {target_file_abs}")
+    debug_print(f"Temp directory: {temp_dir}")
     
     if not target_file_abs.startswith(temp_dir):
+        debug_print(f"SECURITY ERROR: Path traversal attempt detected!")
+        debug_print(f"  Target: {target_file_abs}")
+        debug_print(f"  Temp dir: {temp_dir}")
         raise ValueError(f"Invalid target file path: {target_file_abs} (not under temp directory)")
     
-    debug_print(f"Validated target_file: {target_file_abs}")
+    debug_print(f"Path validation passed: {target_file_abs}")
     
     # Create curl dictionary file
+    debug_print("Creating curl dictionary file...")
     dict_file = create_curl_dict()
+    debug_print(f"Dictionary file created: {dict_file}")
     
     # Detect editor
+    debug_print("Detecting available editor...")
     editor = get_editor()
+    debug_print(f"Selected editor: {editor}")
 
     if editor == 'nvim':
         # Neovim Lua configuration with sanitized paths
+        debug_print("Sanitizing paths for Lua interpolation...")
         dict_file_safe = sanitize_lua_string(dict_file)
         target_file_safe = sanitize_lua_string(target_file_abs)
+        debug_print(f"Sanitized dict_file: {len(dict_file_safe)} chars")
+        debug_print(f"Sanitized target_file: {len(target_file_safe)} chars")
         
+        debug_print("Generating Neovim Lua configuration...")
         config_content = f'''-- Neovim Lua configuration for curl completion
 local dict_file = [[{dict_file_safe}]]
 local target_path = [[{target_file_safe}]]
@@ -188,8 +203,11 @@ vim.api.nvim_create_autocmd({{ 'BufEnter', 'BufWinEnter' }}, {{
         suffix = '.lua'
     else:
         # Vimscript configuration with sanitized paths
+        debug_print("Sanitizing paths for Vimscript interpolation...")
         dict_file_safe = sanitize_vim_string(dict_file)
+        debug_print(f"Sanitized dict_file: {len(dict_file_safe)} chars")
         
+        debug_print("Generating Vimscript configuration...")
         config_content = f'''set nocompatible
 syntax on
 filetype plugin indent on
@@ -215,24 +233,29 @@ echo "Curl autocomplete available: Press Ctrl+X Ctrl+K in insert mode for comple
     # fd: File descriptor (integer) for the opened file
     # config_tmp: Path to the created temporary config file
     # suffix: File extension (.lua for Neovim, .vimrc for Vim)
+    debug_print(f"Creating temporary config file with suffix: {suffix}")
     fd, config_tmp = tempfile.mkstemp(suffix=suffix)
+    debug_print(f"Created temp config file: {config_tmp} (fd: {fd})")
     
     # Add config file to temp_files list for automatic cleanup on exit
     temp_files.append(config_tmp)
+    debug_print(f"Added config file to cleanup list (total temp files: {len(temp_files)})")
     debug_print(f"Created editor config at: {config_tmp} (editor={editor}, suffix={suffix})")
 
     try:
         # Write config content to file
         # os.fdopen(): Convert file descriptor to file object
         # 'w': Write mode (text mode)
+        debug_print(f"Writing config content ({len(config_content)} bytes) to file...")
         with os.fdopen(fd, 'w') as f:
-            f.write(config_content)
+            bytes_written = f.write(config_content)
+            debug_print(f"Wrote {bytes_written} bytes to config file")
         
         # If DEBUG mode is enabled, output config file content for debugging
         if DEBUG:
             # lines: List of lines from config content (split by newline)
             lines = config_content.split('\n')
-            debug_print(f"Config file content ({len(config_content)} bytes):")
+            debug_print(f"Config file content ({len(config_content)} bytes, {len(lines)} lines):")
             # Output first 20 lines with line numbers
             for i, line in enumerate(lines[:20], 1):
                 debug_print(f"  {i:3d}: {line}")
@@ -241,8 +264,10 @@ echo "Curl autocomplete available: Press Ctrl+X Ctrl+K in insert mode for comple
                 remaining_lines = total_lines - 20
                 debug_print(f"  ... ({remaining_lines} more lines)")
     except OSError as e:
+        debug_print(f"ERROR: Failed to create config file: {type(e).__name__}: {e}")
         print_error(f"Failed to create config file: {e}")
 
+    debug_print(f"Editor config file created successfully: {config_tmp}")
     return config_tmp
 
 
@@ -268,14 +293,20 @@ def open_editor(tmpfile: str) -> None:
         5. Wait for editor to close
         6. Clean up config file
     """
+    debug_print(f"open_editor called with tmpfile: {tmpfile}")
+    
     # editor: Editor name ('nvim' or 'vim')
     # Detected by get_editor() in dependencies.py
+    debug_print("Getting available editor...")
     editor = get_editor()
+    debug_print(f"Editor selected: {editor}")
     
     # config_tmp: Path to editor configuration file
     # Created by create_editor_config() with curl autocomplete settings
     # Contains editor-specific config (Lua for Neovim, Vimscript for Vim)
+    debug_print("Creating editor configuration file...")
     config_tmp = create_editor_config(tmpfile)
+    debug_print(f"Editor config created: {config_tmp}")
 
     try:
         if editor == 'nvim':
@@ -288,6 +319,7 @@ def open_editor(tmpfile: str) -> None:
             # -c 'doautocmd BufEnter': Trigger BufEnter event (applies buffer settings)
             # +8: Go to line 8 (empty line in template)
             # +startinsert: Start in insert mode
+            debug_print("Building Neovim command with Lua config")
             cmd = [editor, '--clean', '-u', 'NONE', tmpfile, '-c', f'luafile {config_tmp}', '-c', 'doautocmd BufEnter', '+8', '+startinsert']
         else:
             # Vim command with vimrc
@@ -296,28 +328,35 @@ def open_editor(tmpfile: str) -> None:
             # +8: Go to line 8 (empty line in template)
             # +startinsert: Start in insert mode
             # tmpfile: Template file to edit
+            debug_print("Building Vim command with vimrc config")
             cmd = [editor, '-u', config_tmp, '+8', '+startinsert', tmpfile]
         
-        debug_print(f"Launching editor with command: {' '.join(cmd)}")
+        debug_print(f"Editor command: {' '.join(cmd)}")
+        debug_print(f"Launching editor as subprocess (will block until editor closes)...")
         
         # result: CompletedProcess object from subprocess.run()
         # check=True: Raise exception if editor exits with non-zero code
         # This blocks until editor closes (user saves and quits)
         result = subprocess.run(cmd, check=True)
+        debug_print(f"Editor closed with returncode: {result.returncode}")
     except subprocess.CalledProcessError as e:
         # Editor exited with error (non-zero exit code)
+        debug_print(f"Editor exited with error: returncode={e.returncode}, cmd={e.cmd}")
         print_error(f"Editor exited with error: {e}")
     except FileNotFoundError:
         # Editor executable not found in PATH
+        debug_print(f"Editor '{editor}' not found in PATH")
         print_error(f"Editor '{editor}' not found.")
     finally:
         # Clean up config file
         # Always remove config file, even if editor launch failed
         # This prevents leaving temporary files behind
         try:
-            debug_print(f"Removing editor config: {config_tmp}")
+            debug_print(f"Cleaning up editor config file: {config_tmp}")
             os.unlink(config_tmp)  # Delete config file
             temp_files.remove(config_tmp)  # Remove from temp_files list
-        except OSError:
+            debug_print(f"Editor config file removed (remaining temp files: {len(temp_files)})")
+        except OSError as e:
+            debug_print(f"Error removing editor config file: {e} (may already be deleted)")
             pass  # Ignore errors (file may already be deleted)
 

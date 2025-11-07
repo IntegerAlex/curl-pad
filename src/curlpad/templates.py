@@ -66,38 +66,56 @@ def create_template_file() -> str:
 
 """
 
+    debug_print("Creating template file with secure permissions")
+    debug_print(f"Template content length: {len(template)} bytes")
+    
     # Set secure umask to ensure 0o700 directory and 0o600 file permissions
     old_umask = os.umask(0o077)
+    debug_print(f"Set secure umask: 0o077 (old umask was: {oct(old_umask)})")
     
     try:
         # Create temporary directory with secure permissions (0o700 due to umask)
+        debug_print("Creating temporary directory")
         tdir = tempfile.mkdtemp()
+        debug_print(f"Created temp directory: {tdir}")
         
         # Verify directory permissions
         dir_stat = os.stat(tdir)
-        if stat.S_IMODE(dir_stat.st_mode) != 0o700:
+        dir_mode = stat.S_IMODE(dir_stat.st_mode)
+        debug_print(f"Directory permissions: {oct(dir_mode)} (expected: 0o700)")
+        if dir_mode != 0o700:
             # Force correct permissions if umask didn't work
+            debug_print(f"Forcing secure permissions on temp directory: {tdir}")
             os.chmod(tdir, 0o700)
             debug_print(f"Forced secure permissions on temp directory: {tdir}")
         
         # Create temporary file with secure permissions atomically
+        debug_print(f"Creating temporary file in directory: {tdir}")
         fd, tmpfile = tempfile.mkstemp(suffix=".sh", dir=tdir)
+        debug_print(f"Created temp file: {tmpfile} (fd: {fd})")
         
         try:
             # Set file permissions to 0o600 (owner read/write only)
+            debug_print(f"Setting file permissions to 0o600")
             os.fchmod(fd, 0o600)
             
             # Write template content atomically via file descriptor
+            debug_print(f"Writing template content ({len(template)} bytes) to file")
             with os.fdopen(fd, 'w') as f:
-                f.write(template)
+                bytes_written = f.write(template)
+                debug_print(f"Wrote {bytes_written} bytes to template file")
             
             # Verify file permissions after write
             file_stat = os.stat(tmpfile)
-            if stat.S_IMODE(file_stat.st_mode) != 0o600:
+            file_mode = stat.S_IMODE(file_stat.st_mode)
+            debug_print(f"File permissions after write: {oct(file_mode)} (expected: 0o600)")
+            if file_mode != 0o600:
+                debug_print(f"WARNING: File permissions mismatch! Expected 0o600, got {oct(file_mode)}")
                 print_error(f"Failed to set secure permissions on template file: {tmpfile}")
             
             # Add to cleanup list AFTER successful write
             temp_files.append(tmpfile)
+            debug_print(f"Added template file to cleanup list (total temp files: {len(temp_files)})")
             debug_print(f"Created secure template file at: {tmpfile} (mode: 0o600)")
             
             return tmpfile
@@ -158,42 +176,62 @@ def create_curl_dict() -> str:
         'curl', 'https://', 'http://', 'localhost', '127.0.0.1'
     ]
 
+    debug_print(f"Creating curl dictionary with {len(curl_options)} entries")
+    
     # Set secure umask
     old_umask = os.umask(0o077)
+    debug_print(f"Set secure umask: 0o077 (old umask was: {oct(old_umask)})")
     
     try:
         # Create temporary directory with secure permissions
+        debug_print("Creating temporary directory for dictionary")
         tdir = tempfile.mkdtemp()
+        debug_print(f"Created temp directory: {tdir}")
         
         # Verify directory permissions
         dir_stat = os.stat(tdir)
-        if stat.S_IMODE(dir_stat.st_mode) != 0o700:
+        dir_mode = stat.S_IMODE(dir_stat.st_mode)
+        debug_print(f"Directory permissions: {oct(dir_mode)} (expected: 0o700)")
+        if dir_mode != 0o700:
+            debug_print(f"Forcing secure permissions on dict temp directory: {tdir}")
             os.chmod(tdir, 0o700)
             debug_print(f"Forced secure permissions on dict temp directory: {tdir}")
         
         # Create temporary dictionary file atomically
+        debug_print(f"Creating temporary dictionary file in directory: {tdir}")
         fd, dict_tmp = tempfile.mkstemp(suffix=".dict", dir=tdir)
+        debug_print(f"Created temp dictionary file: {dict_tmp} (fd: {fd})")
         
         try:
             # Set file permissions to 0o600
+            debug_print(f"Setting dictionary file permissions to 0o600")
             os.fchmod(fd, 0o600)
             
             # Write dictionary content atomically via file descriptor
+            debug_print(f"Writing {len(curl_options)} dictionary entries to file")
+            total_bytes = 0
             with os.fdopen(fd, 'w') as f:
                 for option in curl_options:
-                    f.write(f"{option}\n")
+                    bytes_written = f.write(f"{option}\n")
+                    total_bytes += bytes_written
+            debug_print(f"Wrote {total_bytes} bytes ({len(curl_options)} entries) to dictionary file")
             
             # Verify file permissions
             file_stat = os.stat(dict_tmp)
-            if stat.S_IMODE(file_stat.st_mode) != 0o600:
+            file_mode = stat.S_IMODE(file_stat.st_mode)
+            debug_print(f"Dictionary file permissions after write: {oct(file_mode)} (expected: 0o600)")
+            if file_mode != 0o600:
+                debug_print(f"WARNING: Dictionary file permissions mismatch! Expected 0o600, got {oct(file_mode)}")
                 print_error(f"Failed to set secure permissions on dictionary file: {dict_tmp}")
             
             # Add to cleanup list AFTER successful write
             temp_files.append(dict_tmp)
+            debug_print(f"Added dictionary file to cleanup list (total temp files: {len(temp_files)})")
             debug_print(f"Created secure curl dictionary at: {dict_tmp} with {len(curl_options)} entries (mode: 0o600)")
             
             # Verify content if DEBUG enabled
             if DEBUG:
+                debug_print("Verifying dictionary file content...")
                 with open(dict_tmp, 'r') as vf:
                     lines = vf.readlines()
                     debug_print(f"Dictionary file verified: {len(lines)} lines, first 5: {[l.strip() for l in lines[:5]]}")

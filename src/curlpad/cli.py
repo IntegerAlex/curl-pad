@@ -43,7 +43,8 @@ from curlpad.dependencies import check_dependencies, install_deps, get_editor
 from curlpad.editor import open_editor
 from curlpad.output import print_error, print_info, print_warning
 from curlpad.templates import create_template_file
-from curlpad.utils import DEBUG, debug_print
+from curlpad import utils
+from curlpad.utils import debug_print
 
 
 def confirm_execution(commands: List[str]) -> bool:
@@ -66,23 +67,30 @@ def confirm_execution(commands: List[str]) -> bool:
         2. If stdin fails, try Windows MessageBox (if on Windows)
         3. If all fail, proceed without confirmation (with warning)
     """
+    debug_print(f"confirm_execution called with {len(commands)} command(s)")
+    debug_print(f"Platform: {os.name}, stdin available: {sys.stdin is not None}")
+    
     # Try to use stdin first (even if isatty() returns False in frozen binaries)
     # With console=True, stdin should work even in frozen binaries
     if sys.stdin is not None:
+        debug_print("Attempting to use stdin for confirmation")
         try:
             # Try to use stdin - this works even if isatty() returns False
             print("Press Enter to run, or Ctrl+C to cancel... ", end='', flush=True)
             input()
+            debug_print("User confirmed execution via stdin")
             return True
         except KeyboardInterrupt:
+            debug_print("User cancelled via Ctrl+C")
             print("\nOperation cancelled.")
             return False
         except (RuntimeError, EOFError, OSError) as exc:
-            debug_print(f"stdin unavailable: {exc}")
+            debug_print(f"stdin unavailable: {type(exc).__name__}: {exc}")
             # Fall through to MessageBox fallback
 
     # Fallback to MessageBox on Windows if stdin failed
     if os.name == 'nt':
+        debug_print("Attempting Windows MessageBox fallback")
         try:
             import ctypes
 
@@ -91,19 +99,24 @@ def confirm_execution(commands: List[str]) -> bool:
             IDOK = 1
 
             message = "Run the following command(s)?\n\n" + "\n".join(commands)
+            debug_print(f"Showing MessageBox with {len(commands)} command(s)")
             result = ctypes.windll.user32.MessageBoxW(  # type: ignore[attr-defined]
                 None,
                 message,
                 "curlpad",
                 MB_OKCANCEL | MB_ICONINFORMATION,
             )
+            debug_print(f"MessageBox result: {result} (IDOK={IDOK})")
             if result == IDOK:
+                debug_print("User confirmed execution via MessageBox")
                 return True
+            debug_print("User cancelled via MessageBox")
             print_info("Operation cancelled.")
             return False
         except Exception as exc:  # pragma: no cover - Windows specific
-            debug_print(f"Failed to show Windows prompt: {exc}")
+            debug_print(f"Failed to show Windows prompt: {type(exc).__name__}: {exc}")
 
+    debug_print("No interactive console detected; proceeding without confirmation")
     print_warning("No interactive console detected; proceeding without confirmation.")
     return True
 
@@ -209,18 +222,18 @@ def main() -> None:
     # unknown: Unrecognized arguments (not used, but kept for compatibility)
     args, unknown = parser.parse_known_args()
 
-    # Set global DEBUG flag
+    # Set global DEBUG flag in utils module
     # This enables verbose logging throughout the application
     # When True, all debug_print() calls will output messages with timestamps
     # Modified in utils.py module, used by all modules via debug_print()
-    global DEBUG
-    DEBUG = bool(args.debug)
-    if DEBUG:
+    utils.DEBUG = bool(args.debug)
+    if utils.DEBUG:
         # Output debug information about the execution environment
         debug_print(f"argv: {sys.argv}")  # Command-line arguments
         debug_print(f"python: {sys.version}")  # Python version
         debug_print(f"platform: {os.name}")  # Operating system (nt=Windows, posix=Unix)
         debug_print(f"cwd: {os.getcwd()}")  # Current working directory
+        debug_print(f"DEBUG flag enabled: {utils.DEBUG}")
 
     # Handle early-exit flags (help, version, install)
     # These flags cause the program to exit immediately after displaying information
@@ -239,31 +252,39 @@ def main() -> None:
     # Check dependencies
     # Verifies that curl is installed (required for executing HTTP requests)
     # Raises SystemExit if curl is not found
+    debug_print("Checking dependencies...")
     check_dependencies()
+    debug_print("Dependencies check passed")
 
     # Create template file
     # Creates a temporary .sh file with commented curl examples
     # Returns: Path to the created template file
     # The file is added to temp_files list for automatic cleanup on exit
+    debug_print("Creating template file...")
     tmpfile = create_template_file()
-    debug_print(f"Editor target file: {tmpfile}")
+    debug_print(f"Template file created: {tmpfile}")
 
     # Open editor with autocomplete
     # Launches nvim or vim with the template file and autocomplete configuration
     # The editor is opened with cursor at line 8 (empty line in template) in insert mode
     # User edits commands in the editor, then saves and exits
     # Control returns to this function after editor closes
+    debug_print("Opening editor with autocomplete...")
     open_editor(tmpfile)
+    debug_print("Editor closed, proceeding to extract commands")
 
     # Extract commands from edited template file
     # Parses the file and extracts uncommented curl commands
     # Handles multiline commands, continuation lines, and comments
     # Returns: List of extracted curl commands as strings
+    debug_print("Extracting commands from edited template...")
     commands = extract_commands(tmpfile)
+    debug_print(f"Extracted {len(commands)} command(s)")
 
     # Check if any commands were extracted
     # If no commands found, warn user and exit
     if not commands:
+        debug_print("No commands extracted, exiting")
         print_warning("No uncommented command found. Exiting.")
         return
 
@@ -271,24 +292,33 @@ def main() -> None:
     # Attempts to format JSON strings in curl commands using jq
     # If jq is not available, returns original commands unchanged
     # This improves readability of JSON payloads in curl commands
+    debug_print("Formatting JSON in commands (if jq available)...")
     commands = format_json_with_jq(commands)
+    debug_print(f"JSON formatting complete, {len(commands)} command(s) ready")
 
     # Validate commands
     # Checks each command to ensure it's a valid curl command
     # Basic validation: command must start with 'curl'
     # Raises SystemExit if invalid command is found
-    for cmd in commands:
-        debug_print(f"Validating command: {cmd}")
+    debug_print(f"Validating {len(commands)} command(s)...")
+    for i, cmd in enumerate(commands, 1):
+        debug_print(f"Validating command {i}/{len(commands)}: {cmd[:80]}{'...' if len(cmd) > 80 else ''}")
         if not validate_command(cmd):
+            debug_print(f"Command {i} validation FAILED")
             print_error(f"Invalid curl command: {cmd}")
+        else:
+            debug_print(f"Command {i} validation PASSED")
+    debug_print("All commands validated successfully")
 
     # Show final commands to user
     # Displays all commands that will be executed
     # This gives the user a chance to review before execution
+    debug_print("Displaying final commands to user")
     print("\n📋 Final command(s) to execute:")
     print("----------------------------------------")
-    for cmd in commands:
+    for i, cmd in enumerate(commands, 1):
         print(cmd)
+        debug_print(f"  Command {i}: {cmd[:100]}{'...' if len(cmd) > 100 else ''}")
     print("----------------------------------------")
 
     # Prompt for confirmation
@@ -296,8 +326,11 @@ def main() -> None:
     # Falls back to Windows MessageBox if stdin unavailable
     # Returns: True if user confirms, False if cancelled
     # If False, program exits without executing commands
+    debug_print("Prompting user for confirmation...")
     if not confirm_execution(commands):
+        debug_print("User cancelled execution")
         return
+    debug_print("User confirmed execution, proceeding to run commands")
 
     # Execute commands one by one
     # For each command in the list:
@@ -307,6 +340,10 @@ def main() -> None:
     #   4. Pretty-print JSON if detected in output
     #   5. Display results with appropriate colors
     #   6. Check exit code and display error if non-zero
-    for cmd in commands:
+    debug_print(f"Executing {len(commands)} command(s)...")
+    for i, cmd in enumerate(commands, 1):
+        debug_print(f"Executing command {i}/{len(commands)}")
         run_command(cmd)
+        debug_print(f"Command {i}/{len(commands)} execution complete")
+    debug_print("All commands executed successfully")
 

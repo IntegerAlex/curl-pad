@@ -89,14 +89,24 @@ def cleanup_temp_files() -> None:
         3. Attempt to delete (os.unlink)
         4. Ignore errors (file may already be deleted)
     """
-    debug_print(f"Cleanup starting for {len(temp_files)} temp files")
-    for temp_file in temp_files:
+    debug_print(f"Cleanup starting for {len(temp_files)} temp file(s)")
+    if not temp_files:
+        debug_print("No temp files to clean up")
+        return
+    
+    for i, temp_file in enumerate(temp_files, 1):
         try:
             if os.path.exists(temp_file):
-                debug_print(f"Removing temp file: {temp_file}")
+                debug_print(f"Removing temp file {i}/{len(temp_files)}: {temp_file}")
                 os.unlink(temp_file)
-        except OSError:
+                debug_print(f"Successfully removed: {temp_file}")
+            else:
+                debug_print(f"Temp file {i}/{len(temp_files)} already deleted: {temp_file}")
+        except OSError as e:
+            debug_print(f"Error removing temp file {i}/{len(temp_files)}: {temp_file} - {e}")
             pass  # Ignore cleanup errors
+    
+    debug_print(f"Cleanup complete: {len(temp_files)} temp file(s) processed")
 
 
 def signal_handler(signum, frame) -> None:
@@ -117,17 +127,25 @@ def signal_handler(signum, frame) -> None:
         3. cleanup_temp_files() removes all temp files
         4. sys.exit(1) terminates the program
     """
+    signal_name = signal.Signals(signum).name if hasattr(signal, 'Signals') else f"signal {signum}"
+    debug_print(f"Signal handler called: {signal_name} (signum={signum})")
+    debug_print("Cleaning up temp files before exit...")
     cleanup_temp_files()
+    debug_print("Exiting due to signal")
     sys.exit(1)
 
 
 # Register cleanup function to run on normal exit
 # This ensures temp files are removed even if program exits normally
 atexit.register(cleanup_temp_files)
+if DEBUG:
+    debug_print("Registered atexit handler for temp file cleanup")
 
 # Register signal handlers for graceful shutdown
 # SIGINT: Interrupt signal (Ctrl+C)
 # SIGTERM: Termination signal (kill command)
 signal.signal(signal.SIGINT, signal_handler)
 signal.signal(signal.SIGTERM, signal_handler)
+if DEBUG:
+    debug_print("Registered signal handlers: SIGINT, SIGTERM")
 

@@ -69,11 +69,15 @@ def check_command(command: str) -> bool:
         if check_command('curl'):
             print("curl is installed")
     """
+    debug_print(f"Checking for command in PATH: '{command}'")
     # path: Full path to command executable, or None if command not found in PATH
     # shutil.which() searches the PATH environment variable for the command
     # On Windows, also checks .exe, .cmd, .bat extensions automatically
     path = shutil.which(command)
-    debug_print(f"Check command '{command}': {'found at ' + path if path else 'not found'}")
+    if path:
+        debug_print(f"Command '{command}' found at: {path}")
+    else:
+        debug_print(f"Command '{command}' not found in PATH")
     return path is not None
 
 
@@ -96,13 +100,15 @@ def get_editor() -> str:
         2. If not found, check for 'vim' in PATH
         3. If neither found, print error and exit
     """
+    debug_print("Detecting available editor (preferring nvim over vim)...")
     if check_command('nvim'):
-        debug_print("Selected editor: nvim")
+        debug_print("Selected editor: nvim (preferred)")
         return 'nvim'
     elif check_command('vim'):
-        debug_print("Selected editor: vim")
+        debug_print("Selected editor: vim (fallback)")
         return 'vim'
     else:
+        debug_print("ERROR: Neither nvim nor vim found in PATH")
         print_error("Neither nvim nor vim is installed.\nRun 'python3 curlpad.py --install' to install dependencies.")
 
 
@@ -122,16 +128,25 @@ def verify_binary(name: str) -> str:
     Raises:
         RuntimeError: If binary not found or in unexpected location
     """
+    debug_print(f"Verifying binary: {name}")
     expected_path = TRUSTED_BINARIES.get(name)
     if not expected_path:
+        debug_print(f"ERROR: Unknown binary '{name}' not in TRUSTED_BINARIES")
         raise ValueError(f"Unknown binary: {name}")
     
+    debug_print(f"Expected path for {name}: {expected_path}")
     actual_path = shutil.which(name)
+    debug_print(f"Actual path found for {name}: {actual_path}")
     
     if not actual_path:
+        debug_print(f"ERROR: Binary '{name}' not found in PATH")
         raise RuntimeError(f"Binary '{name}' not found in PATH")
     
     if actual_path != expected_path:
+        debug_print(f"WARNING: Binary {name} at unexpected location!")
+        debug_print(f"  Expected: {expected_path}")
+        debug_print(f"  Found:    {actual_path}")
+        debug_print("  This could indicate a PATH hijacking attempt")
         print_warning(f"Binary {name} found at unexpected location:")
         print_warning(f"  Expected: {expected_path}")
         print_warning(f"  Found:    {actual_path}")
@@ -139,9 +154,12 @@ def verify_binary(name: str) -> str:
         
         response = input("Continue anyway? (y/N): ").strip().lower()
         if response != 'y':
+            debug_print(f"User rejected non-standard binary location for {name}")
             raise RuntimeError("Installation aborted by user due to unexpected binary location")
         
         debug_print(f"User approved non-standard binary location for {name}")
+    else:
+        debug_print(f"Binary {name} verified at expected location: {actual_path}")
     
     return actual_path
 
@@ -160,8 +178,12 @@ def check_dependencies() -> None:
         1. Check if 'curl' command exists in PATH
         2. If not found, print error and exit
     """
+    debug_print("Checking required dependencies...")
+    debug_print("Checking for curl (required)...")
     if not check_command('curl'):
+        debug_print("ERROR: curl not found in PATH")
         print_error("curl is not installed. Please install curl first.")
+    debug_print("curl found, dependency check passed")
 
 
 def install_deps() -> None:
@@ -201,14 +223,20 @@ def install_deps() -> None:
             if check_command('apt-get'):
                 # Debian/Ubuntu - verify binaries before use
                 debug_print("Using apt-get for installation")
+                debug_print("Verifying sudo binary...")
                 sudo_path = verify_binary('sudo')
+                debug_print("Verifying apt-get binary...")
                 apt_path = verify_binary('apt-get')
                 
+                debug_print(f"Executing: {sudo_path} {apt_path} update")
                 print_info("Running: sudo apt-get update")
-                subprocess.run([sudo_path, apt_path, 'update'], check=True)
+                result = subprocess.run([sudo_path, apt_path, 'update'], check=True, capture_output=True, text=True)
+                debug_print(f"apt-get update completed: returncode={result.returncode}")
                 
+                debug_print(f"Executing: {sudo_path} {apt_path} install -y vim jq")
                 print_info("Running: sudo apt-get install -y vim jq")
-                subprocess.run([sudo_path, apt_path, 'install', '-y', 'vim', 'jq'], check=True)
+                result = subprocess.run([sudo_path, apt_path, 'install', '-y', 'vim', 'jq'], check=True, capture_output=True, text=True)
+                debug_print(f"apt-get install completed: returncode={result.returncode}")
                 
             elif check_command('dnf'):
                 # RHEL/CentOS/Fedora
