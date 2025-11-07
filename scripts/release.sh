@@ -48,10 +48,21 @@ fi
 echo "📦 Building binary..."
 ./scripts/build_curlpad.sh
 
-if [[ ! -f dist/curlpad ]]; then
-  echo "❌ Binary not found at dist/curlpad" >&2
+# Check for binaries (Linux/macOS and Windows)
+BINARIES=()
+if [[ -f dist/curlpad ]]; then
+  BINARIES+=("dist/curlpad")
+fi
+if [[ -f dist/curlpad.exe ]]; then
+  BINARIES+=("dist/curlpad.exe")
+fi
+
+if [[ ${#BINARIES[@]} -eq 0 ]]; then
+  echo "❌ No binaries found at dist/curlpad or dist/curlpad.exe" >&2
   exit 1
 fi
+
+echo "📦 Found ${#BINARIES[@]} binary(ies) to upload: ${BINARIES[*]}"
 
 # Get current branch
 BRANCH=$(git rev-parse --abbrev-ref HEAD)
@@ -66,6 +77,12 @@ RELEASE_NOTES="Release ${TAG}
 
 ## Installation
 
+**Windows:**
+\`\`\`powershell
+irm curlpad-installer.gossorg.in/install.ps1 | iex
+\`\`\`
+
+**Linux/macOS:**
 \`\`\`bash
 curl -fsSL curlpad-installer.gossorg.in/install.sh | bash
 \`\`\`
@@ -83,12 +100,17 @@ gh release create "${TAG}" \
   --title "curlpad ${TAG}" \
   --notes "${RELEASE_NOTES}" \
   --latest \
-  dist/curlpad
+  "${BINARIES[@]}"
 
 echo ""
 echo "✅ Release ${TAG} created successfully!"
-echo "📦 Binary uploaded: dist/curlpad"
+echo "📦 Binary(ies) uploaded: ${BINARIES[*]}"
 echo "🔗 View at: $(gh release view ${TAG} --json url -q .url)"
 echo ""
-echo "📦 Download URL: https://github.com/IntegerAlex/curl-pad/releases/latest/download/curlpad"
+if [[ -f dist/curlpad ]]; then
+  echo "📦 Linux/macOS Download URL: https://github.com/IntegerAlex/curl-pad/releases/latest/download/curlpad"
+fi
+if [[ -f dist/curlpad.exe ]]; then
+  echo "📦 Windows Download URL: https://github.com/IntegerAlex/curl-pad/releases/latest/download/curlpad.exe"
+fi
 
