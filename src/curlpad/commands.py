@@ -40,6 +40,12 @@ from curlpad.dependencies import check_command
 from curlpad.output import print_error, print_warning
 from curlpad.utils import debug_print
 
+_ALLOWED_CMD = "curl"
+# Add any other flags you want to disallow here
+_BLOCKED_FLAGS = {"--exec", "-e", "--eval"}
+# Optional: restrict to a minimal safe subset of flags if you want allowlist control
+# _ALLOWED_FLAGS = {"-s", "-S", "-v", "-o", "-O", "-L", "--max-time", "--retry", "--header", "-H", "--data", "--data-binary", "--url"}
+
 
 def extract_commands(tmpfile: str) -> List[str]:
     """
@@ -261,28 +267,65 @@ def format_json_with_jq(commands: List[str]) -> List[str]:
 
 def validate_command(command: str) -> bool:
     """
-    Basic validation of curl command syntax.
-    
-    Performs simple validation to ensure the command looks like a valid
-    curl command. This is not comprehensive validation, just basic checks.
-    
+    Strict validation of curl command syntax.
+
+    Performs comprehensive validation to ensure the command is safe and
+    looks like a valid curl command.
+
     Args:
         command: Curl command string to validate
-        
+
     Returns:
         True if command appears valid, False otherwise
-        
+
     Validation Rules:
         1. Command must start with 'curl' (after stripping whitespace)
-        2. Basic structure check (curl followed by options/URL)
+        2. Block known dangerous flags (--exec, -e, --eval)
+        3. Use shlex parsing to ensure proper command structure
     """
-    # Check if it starts with curl
-    if not command.strip().startswith('curl'):
+    try:
+        cmd = command.strip()
+        if not cmd:
+            return False
+        parts = shlex.split(cmd)  # posix parse by default
+        if not parts or parts[0] != _ALLOWED_CMD:
+            return False
+        # Block known-dangerous flags
+        for p in parts[1:]:
+            if p in _BLOCKED_FLAGS:
+                return False
+        # Uncomment to enforce allowlist only:
+        # for p in parts[1:]:
+        #     if p.startswith('-') and p not in _ALLOWED_FLAGS:
+        #         return False
+        return True
+    except ValueError:
         return False
 
-    # Basic syntax check - curl followed by options/URL
-    # This is a simple check, real validation would be complex
-    return True
+
+def run_curl_command(command: str, *, windows: bool = False):
+    """
+    Execute curl command safely with validation.
+
+    Args:
+        command: Curl command string to execute
+        windows: Whether running on Windows (affects parsing)
+
+    Returns:
+        subprocess.CompletedProcess object
+
+    Raises:
+        ValueError: If command validation fails
+        RuntimeError: If command execution fails
+    """
+    if not validate_command(command):
+        raise ValueError(f"Invalid curl command: {command!r}")
+    try:
+        parts = shlex.split(command, posix=not windows)
+        # Never use shell=True
+        return subprocess.run(parts, capture_output=True, text=True, check=False)
+    except (ValueError, OSError) as e:
+        raise RuntimeError(f"Command execution failed: {e}") from e
 
 
 def run_command(command: str) -> None:
@@ -319,72 +362,12 @@ def run_command(command: str) -> None:
     try:
         print(f"\n{Colors.CYAN}▶ Running your cURL command...{Colors.RESET}")
 
-        if os.name == 'nt':
-            # Windows execution
-            # Windows requires special handling because:
-            # 1. Command parsing is different (shlex.split with posix=True works for most cases)
-            # 2. Need to find curl.exe explicitly (may be curl.exe or curl)
-            # 3. May need to fall back to cmd.exe if parsing fails
-            debug_print(f"Executing directly (Windows): {command}")
-            try:
-                # args: List of command arguments parsed from command string
-                # shlex.split() splits the command string into a list of arguments
-                # posix=True: Use POSIX-style splitting (handles quotes correctly)
-                args = shlex.split(command, posix=True)
-            except ValueError as exc:
-                # If parsing fails (e.g., complex quoting), fall back to cmd.exe
-                print_warning(f"Failed to parse command; running via cmd.exe: {exc}")
-                args = None
-
-            # creationflags: Windows-specific subprocess flags
-            # CREATE_NO_WINDOW: Prevents creating a new console window for the subprocess
-            # This keeps output in the current console window
-            creationflags = getattr(subprocess, 'CREATE_NO_WINDOW', 0)
-
-            if args:
-                # If parsing succeeded, execute directly
-                if args and args[0].lower() == 'curl':
-                    # Find curl executable (may be curl.exe or curl)
-                    # curl_exe: Path to curl executable, or None if not found
-                    curl_exe = shutil.which('curl.exe') or shutil.which('curl')
-                    if curl_exe:
-                        args[0] = curl_exe  # Use full path to curl
-                    else:
-                        args[0] = 'curl.exe'  # Fallback to curl.exe (may fail if not in PATH)
-                
-                # result: CompletedProcess object containing stdout, stderr, returncode
-                # capture_output=True: Capture both stdout and stderr
-                # text=True: Return output as strings (not bytes)
-                # check=False: Don't raise exception on non-zero exit code
-                # creationflags: Windows-specific flag to prevent new console window
-                result = subprocess.run(
-                    args,
-                    capture_output=True,
-                    text=True,
-                    check=False,
-                    creationflags=creationflags,
-                )
-            else:
-                # Fallback: Execute via cmd.exe if parsing failed
-                # This handles complex commands that shlex.split can't parse
-                result = subprocess.run(
-                    ['cmd', '/c', command],
-                    capture_output=True,
-                    text=True,
-                    check=False,
-                    creationflags=creationflags,
-                )
-        else:
-            # Unix execution (Linux, macOS)
-            # Unix systems can execute commands directly via bash
-            # bash -c: Execute command string in bash shell
-            debug_print(f"Executing via bash -c: {command}")
-            result = subprocess.run(
-                ['bash', '-c', command],
-                capture_output=True,
-                text=True,
-                check=False
-            )
+        # Use the hardened command execution
+        try:
+            result = run_curl_command(command, windows=(os.name == 'nt'))
+        except (ValueError, RuntimeError) as e:
+            print_error(f"Command execution failed: {e}")
+            return
 
         # Print stdout (standard output from curl command)
         if result.stdout:

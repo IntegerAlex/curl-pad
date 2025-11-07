@@ -1,4 +1,8 @@
-#!/bin/bash
+#!/usr/bin/env bash
+
+set -Eeuo pipefail
+
+IFS=$'\n\t'
 
 # curlpad - A simple curl editor for the command line
 # Copyright (C) 2023 Akshat Kotpalliwar <inquiry.akshatkotpalliwar@gmail.com>
@@ -91,9 +95,12 @@ case "$1" in
     ;;
 esac
 
-# Create temporary files
-tmpfile=$(mktemp)
-vimrc_tmp=$(mktemp)
+# Create private temp dir and files
+_tmpdir="$(mktemp -d)"
+chmod 700 "$_tmpdir"
+trap 'rm -rf "$_tmpdir"' EXIT
+tmpfile="$(mktemp "$_tmpdir/curlpad-XXXXXX.sh")"
+vimrc_tmp="$(mktemp "$_tmpdir/curlpad-XXXXXX.vimrc")"
 
 # Template: 7 lines of comments + 1 blank line = total 8 lines
 cat > "$tmpfile" << 'EOF'
@@ -130,7 +137,7 @@ elif command -v vi >/dev/null 2>&1; then
 else
   echo "Error: Neither vim nor vi is installed."
   echo "Run '$0 --install' to install them automatically."
-  rm -f "$tmpfile" "$vimrc_tmp"
+  rm -rf "$_tmpdir"
   exit 1
 fi
 
@@ -142,18 +149,16 @@ else
   $editor -c "8" -c "startinsert" "$tmpfile"
 fi
 
-rm -f "$vimrc_tmp"
-
 # Check if user added any UNCOMMENTED command
 if ! grep -q "^[^#]" "$tmpfile" 2>/dev/null; then
   echo "No uncommented command found. Exiting."
-  rm -f "$tmpfile"
+  rm -rf "$_tmpdir"
   exit 0
 fi
 
 # Optional: format JSON in -d '...' using jq
 if command -v jq >/dev/null 2>&1; then
-  formatted_file=$(mktemp)
+  formatted_file="$(mktemp "$_tmpdir/curlpad-XXXXXX.sh")"
   while IFS= read -r line || [[ -n "$line" ]]; do
     if [[ "$line" =~ ^[^#]*curl.*-d[[:space:]]*\'\{[^}]*\}\' ]]; then
       if [[ "$line" =~ (.+-d[[:space:]]*\')(\{[^}]*\})(\'.*) ]]; then
@@ -175,17 +180,64 @@ if command -v jq >/dev/null 2>&1; then
   mv "$formatted_file" "$tmpfile"
 fi
 
-# Show final commands
-echo
-echo "📋 Final command(s) to execute:"
-echo "----------------------------------------"
-grep "^[^#]" "$tmpfile"
-echo "----------------------------------------"
+# Only allow lines that begin with 'curl' and block dangerous tokens
+_allowed_prefix='curl'
+_blocklist_regex='(^|[[:space:]])(--exec|-e|--eval)([[:space:]]|$)'
 
-read -p "Press Enter to run, or Ctrl+C to cancel... " _
+# Execute allowed curl lines safely (no eval, no shell interpolation)
+while IFS= read -r line || [[ -n "${line:-}" ]]; do
+  [[ -z "$line" ]] && continue
+  [[ "$line" =~ ^[[:space:]]*# ]] && continue
 
-echo
-echo "▶ Running your cURL command(s)..."
-bash -c "$(grep "^[^#]" "$tmpfile")"
+  # Must start with curl
+  read -r first _ <<<"$line"
+  if [[ "$first" != "$_allowed_prefix" ]]; then
+    printf 'error: only curl commands are allowed: %q\n' "$line" >&2
+    rm -rf "$_tmpdir"
+    exit 1
+  fi
 
-rm -f "$tmpfile"
+  # Block known dangerous flags
+  if [[ "$line" =~ $_blocklist_regex ]]; then
+    printf 'error: disallowed curl flag in: %q\n' "$line" >&2
+    rm -rf "$_tmpdir"
+    exit 1
+  fi
+
+  # Parse safely into an array and exec without shell
+  # shellcheck disable=SC2206
+  args=( $(printf '%s' "$line" | xargs -0 printf '%s\0' 2>/dev/null || true) )
+  # Fallback: robust parse with python if available
+  if [[ ${#args[@]} -eq 0 ]]; then
+    if command -v python3 >/dev/null 2>&1; then
+      mapfile -t args < <(python3 - <<'PY'
+import shlex, sys
+print("\n".join(shlex.split(sys.stdin.read())))
+PY
+      <<<"$line")
+    else
+      printf 'error: failed to parse line safely and python3 not available\n' >&2
+      rm -rf "$_tmpdir"
+      exit 1
+    fi
+  fi
+
+  echo "Executing: ${args[*]}"
+  command -v curl >/dev/null 2>&1 || { echo "curl not found"; rm -rf "$_tmpdir"; exit 1; }
+
+  # Show final commands
+  echo
+  echo "📋 Final command(s) to execute:"
+  echo "----------------------------------------"
+  echo "$line"
+  echo "----------------------------------------"
+
+  read -p "Press Enter to run, or Ctrl+C to cancel... " _
+
+  echo
+  echo "▶ Running your cURL command(s)..."
+  # Execute without shell
+  "${args[@]}"
+done < <(grep '^[^#]' "$tmpfile")
+
+rm -rf "$_tmpdir"
