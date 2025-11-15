@@ -317,19 +317,21 @@ def open_editor(tmpfile: str) -> None:
             # tmpfile: Template file to edit
             # -c 'luafile {config_tmp}': Execute Lua config file after loading
             # -c 'doautocmd BufEnter': Trigger BufEnter event (applies buffer settings)
-            # +8: Go to line 8 (empty line in template)
+            # +8: Go to line 8 (where curl/curl.exe is)
+            # -c 'normal $': Move cursor to end of line (after curl/curl.exe)
             # +startinsert: Start in insert mode
             debug_print("Building Neovim command with Lua config")
-            cmd = [editor, '--clean', '-u', 'NONE', tmpfile, '-c', f'luafile {config_tmp}', '-c', 'doautocmd BufEnter', '+8', '+startinsert']
+            cmd = [editor, '--clean', '-u', 'NONE', tmpfile, '-c', f'luafile {config_tmp}', '-c', 'doautocmd BufEnter', '+8', '-c', 'normal $', '+startinsert']
         else:
             # Vim command with vimrc
             # cmd: List of command arguments to launch Vim
             # -u {config_tmp}: Use config file as vimrc
-            # +8: Go to line 8 (empty line in template)
+            # +8: Go to line 8 (where curl/curl.exe is)
+            # -c 'normal $': Move cursor to end of line (after curl/curl.exe)
             # +startinsert: Start in insert mode
             # tmpfile: Template file to edit
             debug_print("Building Vim command with vimrc config")
-            cmd = [editor, '-u', config_tmp, '+8', '+startinsert', tmpfile]
+            cmd = [editor, '-u', config_tmp, '+8', '-c', 'normal $', '+startinsert', tmpfile]
         
         debug_print(f"Editor command: {' '.join(cmd)}")
         debug_print(f"Launching editor as subprocess (will block until editor closes)...")
