@@ -40,7 +40,7 @@ from curlpad.dependencies import check_command
 from curlpad.output import print_error, print_warning
 from curlpad.utils import debug_print
 
-_ALLOWED_CMD = "curl"
+_ALLOWED_CMDS = {"curl", "curl.exe"}  # Support both Unix and Windows
 # Blocklist for known dangerous flags
 _BLOCKED_FLAGS = {"--exec", "-e", "--eval", "-K", "--config", "--write-out", "-w"}
 # Allowlist: Only permit known-safe flags (security-first approach)
@@ -369,12 +369,12 @@ def validate_command(command: str) -> bool:
         parts = shlex.split(cmd, posix=True)
         debug_print(f"Parsed into {len(parts)} parts: {parts[:5]}{'...' if len(parts) > 5 else ''}")
         
-        # Must start with 'curl'
-        if not parts or parts[0] != _ALLOWED_CMD:
-            debug_print(f"Validation failed: command must start with 'curl', got '{parts[0] if parts else 'empty'}'")
+        # Must start with 'curl' or 'curl.exe'
+        if not parts or parts[0] not in _ALLOWED_CMDS:
+            debug_print(f"Validation failed: command must start with 'curl' or 'curl.exe', got '{parts[0] if parts else 'empty'}'")
             return False
         
-        debug_print(f"Command starts with '{_ALLOWED_CMD}', validating {len(parts) - 1} argument(s)...")
+        debug_print(f"Command starts with '{parts[0]}', validating {len(parts) - 1} argument(s)...")
         
         # Validate each argument
         i = 1

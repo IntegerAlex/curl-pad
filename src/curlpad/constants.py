@@ -22,7 +22,7 @@ Variables:
         - BOLD: Bold text formatting
 """
 
-__version__ = "1.1.0"
+__version__ = "1.2.0"
 __author__ = "Akshat Kotpalliwar <inquiry.akshatkotpalliwar@gmail.com>"
 __license__ = "GPL-3.0-or-later"
 

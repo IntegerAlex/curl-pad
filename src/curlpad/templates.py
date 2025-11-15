@@ -56,14 +56,17 @@ def create_template_file() -> str:
         6. Add to temp_files list
         7. Return file path
     """
-    template = """#!/bin/bash
+    # Platform-specific curl command (curl.exe on Windows, curl on Unix)
+    curl_cmd = "curl.exe" if os.name == 'nt' else "curl"
+    
+    template = f"""#!/bin/bash
 # curlpad - scratchpad for curl.
 # AUTHOR - Akshat Kotpalliwar (alias IntegerAlex) <inquiry.akshatkotpalliwar@gmail.com>
 # SPDX-License-Identifier: GPL-3.0-or-later
 # curl -X POST "https://api.example.com" \\
 #   -H "Content-Type: application/json" \\
-#   -d '{"key":"value"}'
-curl 
+#   -d '{{"key":"value"}}'
+{curl_cmd} 
 """
 
     debug_print("Creating template file with secure permissions")
@@ -173,7 +176,7 @@ def create_curl_dict() -> str:
         '-b', '--cookie', '-c', '--cookie-jar', '-e', '--referer',
         '-f', '--fail', '-I', '--head', '-m', '--max-redirs',
         '--compressed', '--digest', '--negotiate', '--ntlm',
-        'curl', 'https://', 'http://', 'localhost', '127.0.0.1'
+        'curl', 'curl.exe', 'https://', 'http://', 'localhost', '127.0.0.1'
     ]
 
     debug_print(f"Creating curl dictionary with {len(curl_options)} entries")
