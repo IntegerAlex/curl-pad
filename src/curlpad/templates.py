@@ -98,15 +98,17 @@ def create_template_file() -> str:
         debug_print(f"Created temp file: {tmpfile} (fd: {fd})")
         
         try:
-            # Set file permissions to 0o600 (owner read/write only)
-            debug_print(f"Setting file permissions to 0o600")
-            os.fchmod(fd, 0o600)
-            
             # Write template content atomically via file descriptor
             debug_print(f"Writing template content ({len(template)} bytes) to file")
             with os.fdopen(fd, 'w') as f:
                 bytes_written = f.write(template)
                 debug_print(f"Wrote {bytes_written} bytes to template file")
+            
+            # Set file permissions to 0o600 (owner read/write only)
+            # Use chmod on file path (works on both Unix and Windows)
+            # Note: On Windows, permissions work differently but chmod still works
+            debug_print(f"Setting file permissions to 0o600")
+            os.chmod(tmpfile, 0o600)
             
             # Verify file permissions after write
             file_stat = os.stat(tmpfile)
@@ -206,10 +208,6 @@ def create_curl_dict() -> str:
         debug_print(f"Created temp dictionary file: {dict_tmp} (fd: {fd})")
         
         try:
-            # Set file permissions to 0o600
-            debug_print(f"Setting dictionary file permissions to 0o600")
-            os.fchmod(fd, 0o600)
-            
             # Write dictionary content atomically via file descriptor
             debug_print(f"Writing {len(curl_options)} dictionary entries to file")
             total_bytes = 0
@@ -218,6 +216,12 @@ def create_curl_dict() -> str:
                     bytes_written = f.write(f"{option}\n")
                     total_bytes += bytes_written
             debug_print(f"Wrote {total_bytes} bytes ({len(curl_options)} entries) to dictionary file")
+            
+            # Set file permissions to 0o600
+            # Use chmod on file path (works on both Unix and Windows)
+            # Note: On Windows, permissions work differently but chmod still works
+            debug_print(f"Setting dictionary file permissions to 0o600")
+            os.chmod(dict_tmp, 0o600)
             
             # Verify file permissions
             file_stat = os.stat(dict_tmp)
