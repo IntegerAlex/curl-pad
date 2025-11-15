@@ -108,15 +108,20 @@ def create_template_file() -> str:
             # Use chmod on file path (works on both Unix and Windows)
             # Note: On Windows, permissions work differently but chmod still works
             debug_print(f"Setting file permissions to 0o600")
-            os.chmod(tmpfile, 0o600)
+            try:
+                os.chmod(tmpfile, 0o600)
+            except OSError as e:
+                # On Windows, chmod may fail or work differently
+                debug_print(f"chmod warning on {os.name}: {e}")
             
-            # Verify file permissions after write
-            file_stat = os.stat(tmpfile)
-            file_mode = stat.S_IMODE(file_stat.st_mode)
-            debug_print(f"File permissions after write: {oct(file_mode)} (expected: 0o600)")
-            if file_mode != 0o600:
-                debug_print(f"WARNING: File permissions mismatch! Expected 0o600, got {oct(file_mode)}")
-                print_error(f"Failed to set secure permissions on template file: {tmpfile}")
+            # Verify file permissions after write (skip strict check on Windows)
+            if os.name != 'nt':  # Only check on Unix-like systems
+                file_stat = os.stat(tmpfile)
+                file_mode = stat.S_IMODE(file_stat.st_mode)
+                debug_print(f"File permissions after write: {oct(file_mode)} (expected: 0o600)")
+                if file_mode != 0o600:
+                    debug_print(f"WARNING: File permissions mismatch! Expected 0o600, got {oct(file_mode)}")
+                    print_error(f"Failed to set secure permissions on template file: {tmpfile}")
             
             # Add to cleanup list AFTER successful write
             temp_files.append(tmpfile)
@@ -221,15 +226,20 @@ def create_curl_dict() -> str:
             # Use chmod on file path (works on both Unix and Windows)
             # Note: On Windows, permissions work differently but chmod still works
             debug_print(f"Setting dictionary file permissions to 0o600")
-            os.chmod(dict_tmp, 0o600)
+            try:
+                os.chmod(dict_tmp, 0o600)
+            except OSError as e:
+                # On Windows, chmod may fail or work differently
+                debug_print(f"chmod warning on {os.name}: {e}")
             
-            # Verify file permissions
-            file_stat = os.stat(dict_tmp)
-            file_mode = stat.S_IMODE(file_stat.st_mode)
-            debug_print(f"Dictionary file permissions after write: {oct(file_mode)} (expected: 0o600)")
-            if file_mode != 0o600:
-                debug_print(f"WARNING: Dictionary file permissions mismatch! Expected 0o600, got {oct(file_mode)}")
-                print_error(f"Failed to set secure permissions on dictionary file: {dict_tmp}")
+            # Verify file permissions (skip strict check on Windows)
+            if os.name != 'nt':  # Only check on Unix-like systems
+                file_stat = os.stat(dict_tmp)
+                file_mode = stat.S_IMODE(file_stat.st_mode)
+                debug_print(f"Dictionary file permissions after write: {oct(file_mode)} (expected: 0o600)")
+                if file_mode != 0o600:
+                    debug_print(f"WARNING: Dictionary file permissions mismatch! Expected 0o600, got {oct(file_mode)}")
+                    print_error(f"Failed to set secure permissions on dictionary file: {dict_tmp}")
             
             # Add to cleanup list AFTER successful write
             temp_files.append(dict_tmp)
