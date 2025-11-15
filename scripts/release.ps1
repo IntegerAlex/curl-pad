@@ -25,16 +25,23 @@ try {
     exit 1
 }
 
-# Get version from curlpad.py
-$versionLine = Select-String -Path "curlpad.py" -Pattern '^__version__ = ' | Select-Object -First 1
-if (-not $versionLine) {
-    Write-Error "Could not extract version from curlpad.py"
+# Get version from Python constants (secure extraction)
+if (-not (Get-Command python -ErrorAction SilentlyContinue) -and -not (Get-Command python3 -ErrorAction SilentlyContinue)) {
+    Write-Error "python or python3 is required"
     exit 1
 }
 
-$VERSION = ($versionLine.Line -split '"')[1]
-if (-not $VERSION) {
-    Write-Error "Could not parse version from curlpad.py"
+$pythonCmd = if (Get-Command python -ErrorAction SilentlyContinue) { "python" } else { "python3" }
+
+$VERSION = & $pythonCmd -c "import sys; sys.path.insert(0, 'src'); from curlpad.constants import __version__; print(__version__)" 2>$null
+if (-not $VERSION -or $LASTEXITCODE -ne 0) {
+    Write-Error "Could not extract version from curlpad.constants"
+    exit 1
+}
+
+# Security: Validate version format (semantic versioning)
+if ($VERSION -notmatch '^\d+\.\d+\.\d+$') {
+    Write-Error "Invalid version format: $VERSION (expected: X.Y.Z)"
     exit 1
 }
 
@@ -46,7 +53,7 @@ Write-Output "Creating release $TAG..."
 try {
     git rev-parse "$TAG" | Out-Null
     Write-Error "Tag $TAG already exists."
-    Write-Output "Update __version__ in curlpad.py or delete the tag:"
+    Write-Output "Update __version__ in src/curlpad/constants.py or delete the tag:"
     Write-Output "  git tag -d $TAG"
     Write-Output "  git push origin :refs/tags/$TAG"
     exit 1
