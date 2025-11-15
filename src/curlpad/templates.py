@@ -63,7 +63,7 @@ def create_template_file() -> str:
 # curl -X POST "https://api.example.com" \\
 #   -H "Content-Type: application/json" \\
 #   -d '{"key":"value"}'
-
+curl 
 """
 
     debug_print("Creating template file with secure permissions")
