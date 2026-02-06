@@ -22,13 +22,16 @@ if ! command -v python3 >/dev/null 2>&1; then
 fi
 
 # Prefer local venv if present
+PYTHON_CMD="python3"
 if [[ -d .venv ]]; then
   # shellcheck disable=SC1091
   source .venv/bin/activate
+  # Use venv's python3 explicitly
+  PYTHON_CMD=".venv/bin/python3"
 fi
 
-python3 -m pip install --upgrade pip >/dev/null
-python3 -m pip install -r requirements.txt >/dev/null
+"$PYTHON_CMD" -m pip install --upgrade pip >/dev/null
+"$PYTHON_CMD" -m pip install -r requirements.txt >/dev/null
 
 # Remove existing binary if it exists (to avoid permission errors)
 if [[ -f "$ROOT_DIR/dist/curlpad" ]]; then
@@ -43,10 +46,10 @@ fi
 # Build using spec file (works with modular structure)
 # The spec file uses curlpad.py as entry point, which imports from src/curlpad
 if [[ -f curlpad.spec ]]; then
-  pyinstaller --clean curlpad.spec
+  "$PYTHON_CMD" -m PyInstaller --clean curlpad.spec
 else
   # Fallback: build directly (will work if package is installed)
-  pyinstaller --clean --onefile --name curlpad curlpad.py
+  "$PYTHON_CMD" -m PyInstaller --clean --onefile --name curlpad curlpad.py
 fi
 
 BINARY_PATH="$ROOT_DIR/dist/curlpad"

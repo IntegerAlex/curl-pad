@@ -434,18 +434,40 @@ def run_curl_command(command: str, *, windows: bool = False):
         RuntimeError: If command execution fails
     """
     debug_print(f"run_curl_command called: windows={windows}, command length={len(command)}")
-    
+
     if not validate_command(command):
         debug_print(f"Command validation failed, raising ValueError")
         raise ValueError(f"Invalid curl command: {command!r}")
-    
+
     debug_print(f"Command validation passed, parsing command")
     try:
         parts = shlex.split(command, posix=not windows)
         debug_print(f"Parsed command into {len(parts)} arguments: {parts[:5]}{'...' if len(parts) > 5 else ''}")
         debug_print(f"Executing subprocess.run with shell=False (security: no shell execution)")
+
+        # Prepare environment to avoid OpenSSL library conflicts with PyInstaller
+        env = os.environ.copy()
+
+        # When running from a PyInstaller bundle, LD_LIBRARY_PATH includes the _MEI temp directory
+        # which contains bundled OpenSSL libraries that may conflict with system curl
+        if not windows and 'LD_LIBRARY_PATH' in env:
+            ld_library_path = env['LD_LIBRARY_PATH']
+            debug_print(f"Original LD_LIBRARY_PATH: {ld_library_path}")
+
+            # Remove PyInstaller _MEI directories from LD_LIBRARY_PATH to prevent
+            # bundled OpenSSL libraries from interfering with system curl binary
+            mei_paths = [path for path in ld_library_path.split(':') if '_MEI' in path]
+            if mei_paths:
+                debug_print(f"Found PyInstaller _MEI paths in LD_LIBRARY_PATH: {mei_paths}")
+                # Filter out _MEI paths
+                filtered_paths = [path for path in ld_library_path.split(':') if '_MEI' not in path]
+                env['LD_LIBRARY_PATH'] = ':'.join(filtered_paths)
+                debug_print(f"Filtered LD_LIBRARY_PATH: {env['LD_LIBRARY_PATH']}")
+            else:
+                debug_print("No _MEI paths found in LD_LIBRARY_PATH")
+
         # Never use shell=True
-        result = subprocess.run(parts, capture_output=True, text=True, check=False)
+        result = subprocess.run(parts, capture_output=True, text=True, check=False, env=env)
         debug_print(f"Subprocess completed: returncode={result.returncode}, stdout_len={len(result.stdout)}, stderr_len={len(result.stderr)}")
         return result
     except (ValueError, OSError) as e:

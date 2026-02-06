@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "curlpad"
-version = "1.0.0"
+version = "1.3.2"
 description = "A simple curl editor for the command line with Vim/Neovim autocomplete"
 readme = "README.md"
 requires-python = ">=3.8"

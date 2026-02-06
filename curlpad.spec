@@ -24,6 +24,14 @@ a = Analysis(
     noarchive=False,
     optimize=0,
 )
+
+# Filter out OpenSSL libraries to prevent conflicts with system curl
+# These libraries cause version conflicts when curl tries to use system OpenSSL
+# curlpad executes curl via subprocess, which uses system OpenSSL libraries
+# Python's SSL module is not used by curlpad, so excluding these is safe
+ssl_libs_to_exclude = ['libcrypto.so', 'libssl.so']
+a.binaries = [x for x in a.binaries if not any(x[0].startswith(ssl_lib) for ssl_lib in ssl_libs_to_exclude)]
+
 pyz = PYZ(a.pure)
 
 exe = EXE(
