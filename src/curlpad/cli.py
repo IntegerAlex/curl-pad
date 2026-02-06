@@ -139,9 +139,11 @@ Options:
   --version, -v   Show version info
   --install       Install missing dependencies (vim, jq)
   --debug         Enable extremely verbose debug output
+  --url URL       Pre-populate template with base URL
 
 Examples:
   {sys.argv[0]}                     # Start editor with curl autocomplete
+  {sys.argv[0]} --url=https://www.example.com  # Pre-populate with base URL
   {sys.argv[0]} --help              # Show help
   {sys.argv[0]} --version           # Show version
   {sys.argv[0]} --install           # Install vim and jq if missing
@@ -212,10 +214,12 @@ def main() -> None:
     # --version, -v: Show version information and exit
     # --install: Install missing dependencies (vim, jq) and exit
     # --debug: Enable verbose debug logging throughout the application
+    # --url: Pre-populate template with base URL
     parser.add_argument('--help', '-h', action='store_true')
     parser.add_argument('--version', '-v', action='store_true')
     parser.add_argument('--install', action='store_true')
     parser.add_argument('--debug', action='store_true')
+    parser.add_argument('--url', type=str, help='Pre-populate template with base URL (e.g., --url=https://www.example.com)')
 
     # Parse command-line arguments
     # args: Parsed arguments (contains help, version, install, debug flags)
@@ -261,7 +265,10 @@ def main() -> None:
     # Returns: Path to the created template file
     # The file is added to temp_files list for automatic cleanup on exit
     debug_print("Creating template file...")
-    tmpfile = create_template_file()
+    base_url = args.url if args.url else None
+    if base_url:
+        debug_print(f"Base URL provided: {base_url}")
+    tmpfile = create_template_file(base_url=base_url)
     debug_print(f"Template file created: {tmpfile}")
 
     # Open editor with autocomplete

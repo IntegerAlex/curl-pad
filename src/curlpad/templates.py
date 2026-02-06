@@ -22,18 +22,23 @@ Flow:
 import os
 import stat
 import tempfile
+from typing import Optional
 
 from curlpad.utils import temp_files, debug_print, DEBUG
 from curlpad.output import print_error
 
 
-def create_template_file() -> str:
+def create_template_file(base_url: Optional[str] = None) -> str:
     """
     Create temporary file with curl command template in secure temp directory.
 
     Creates a temporary shell script file with commented curl examples.
     The file is created atomically with proper permissions to prevent TOCTOU attacks.
     The file is automatically added to temp_files list for cleanup on exit.
+
+    Args:
+        base_url: Optional base URL to pre-populate in the curl command.
+                  If provided, the curl command will include this URL.
 
     Returns:
         Path to the created template file
@@ -45,6 +50,7 @@ def create_template_file() -> str:
         - Shebang line (#!/bin/bash)
         - Header comments with author and license info
         - Commented curl example command
+        - Uncommented curl command with base_url if provided, or empty curl command
         - Empty line at end (where cursor will be positioned)
 
     Flow:
@@ -59,6 +65,15 @@ def create_template_file() -> str:
     # Platform-specific curl command (curl.exe on Windows, curl on Unix)
     curl_cmd = "curl.exe" if os.name == 'nt' else "curl"
     
+    # Build the curl command line
+    if base_url:
+        # Pre-populate with URL if provided
+        curl_line = f'{curl_cmd} "{base_url}"'
+        debug_print(f"Pre-populating template with URL: {base_url}")
+    else:
+        # Empty curl command if no URL provided
+        curl_line = f'{curl_cmd} '
+    
     template = f"""#!/bin/bash
 # curlpad - scratchpad for curl.
 # AUTHOR - Akshat Kotpalliwar (alias IntegerAlex) <inquiry.akshatkotpalliwar@gmail.com>
@@ -66,7 +81,7 @@ def create_template_file() -> str:
 # curl -X POST "https://api.example.com" \\
 #   -H "Content-Type: application/json" \\
 #   -d '{{"key":"value"}}'
-{curl_cmd} 
+{curl_line}
 """
 
     debug_print("Creating template file with secure permissions")
