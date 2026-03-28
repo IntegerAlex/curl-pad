@@ -269,11 +269,11 @@ set complete+=k
 set completeopt=menu,menuone,noselect
 
 " Tab: if popup visible select next item, else trigger completion or insert tab
-inoremap <expr> <Tab> pumvisible() ? "\\<C-n>" : (col('.') > 1 && getline('.')[col('.')-2] =~# '[a-zA-Z0-9\\-]' ? "\\<C-x>\\<C-k>" : "\\<Tab>")
-inoremap <expr> <S-Tab> pumvisible() ? "\\<C-p>" : "\\<S-Tab>"
+inoremap <buffer> <expr> <Tab> pumvisible() ? "\\<C-n>" : (col('.') > 1 && getline('.')[col('.')-2] =~# '[a-zA-Z0-9\\-]' ? "\\<C-x>\\<C-k>" : "\\<Tab>")
+inoremap <buffer> <expr> <S-Tab> pumvisible() ? "\\<C-p>" : "\\<S-Tab>"
 
 " Map Ctrl-Space to trigger dictionary completion
-inoremap <C-Space> <C-x><C-k>
+inoremap <buffer> <C-Space> <C-x><C-k>
 
 " Auto-trigger dictionary completion while typing
 function! s:AutoComplete()
