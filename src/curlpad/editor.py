@@ -225,8 +225,6 @@ local function setup_buffer(buf)
   }})
 
   -- Debug: verify settings
-  local dict_setting = vim.opt_local.dictionary:get()
-  local complete_setting = vim.opt_local.complete:get()
   vim.api.nvim_echo({{
     {{ 'Curl autocomplete: type to see suggestions, Tab/Shift-Tab to navigate, Ctrl+Space or Ctrl+X Ctrl+K to trigger manually', 'Normal' }},
   }}, true, {{}})
