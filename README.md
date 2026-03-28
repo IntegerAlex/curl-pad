@@ -66,7 +66,9 @@ curlpad --version # version
 ```
 
 Inside the editor:
-- Use Ctrl+X Ctrl+K (or Ctrl+Space in Neovim) for dictionary completion
+- Autocomplete triggers automatically as you type (2+ characters)
+- Press Tab / Shift+Tab to navigate completion suggestions
+- Ctrl+Space or Ctrl+X Ctrl+K for manual completion trigger
 - Uncomment/edit example lines, then save and exit to run
 
 ### Requirements

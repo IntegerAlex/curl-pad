@@ -149,8 +149,9 @@ Examples:
   {sys.argv[0]} --install           # Install vim and jq if missing
 
 In the editor:
-  - Press Ctrl+X Ctrl+K in insert mode to autocomplete curl options, methods, headers, etc.
-  - Use Tab for normal indentation
+  - Autocomplete triggers automatically as you type (2+ characters)
+  - Press Tab / Shift+Tab to navigate completion suggestions
+  - Ctrl+Space or Ctrl+X Ctrl+K for manual completion trigger
   - Uncomment and edit the example commands
 
 Dependencies:

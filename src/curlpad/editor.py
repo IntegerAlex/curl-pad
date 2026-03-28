@@ -173,16 +173,62 @@ local function setup_buffer(buf)
   -- Clear and set dictionary
   vim.opt_local.dictionary = {{ dict_file }}
   vim.opt_local.complete:append('k')
-  vim.opt_local.completeopt = {{ 'menu', 'menuone', 'preview' }}
+  vim.opt_local.completeopt = {{ 'menu', 'menuone', 'noselect' }}
+
   -- Map Ctrl-Space to trigger dictionary completion for this buffer
   pcall(vim.keymap.set, 'i', '<C-Space>', '<C-x><C-k>', {{ buffer = buf, noremap = true, silent = true }})
+
+  -- Tab: if popup visible select next item, else trigger dictionary completion if word prefix exists
+  pcall(vim.keymap.set, 'i', '<Tab>', function()
+    if vim.fn.pumvisible() == 1 then
+      return vim.api.nvim_replace_termcodes('<C-n>', true, true, true)
+    end
+    local col = vim.fn.col('.') - 1
+    if col > 0 then
+      local line = vim.fn.getline('.')
+      local char = line:sub(col, col)
+      if char:match('[%w%-]') then
+        return vim.api.nvim_replace_termcodes('<C-x><C-k>', true, true, true)
+      end
+    end
+    return vim.api.nvim_replace_termcodes('<Tab>', true, true, true)
+  end, {{ buffer = buf, noremap = true, silent = true, expr = true }})
+
+  -- Shift-Tab: select previous completion item
+  pcall(vim.keymap.set, 'i', '<S-Tab>', function()
+    if vim.fn.pumvisible() == 1 then
+      return vim.api.nvim_replace_termcodes('<C-p>', true, true, true)
+    end
+    return vim.api.nvim_replace_termcodes('<S-Tab>', true, true, true)
+  end, {{ buffer = buf, noremap = true, silent = true, expr = true }})
+
+  -- Auto-trigger dictionary completion as user types
+  vim.api.nvim_create_autocmd('TextChangedI', {{
+    buffer = buf,
+    callback = function()
+      if vim.fn.pumvisible() == 1 then
+        return
+      end
+      local col = vim.fn.col('.') - 1
+      if col < 2 then
+        return
+      end
+      local line = vim.fn.getline('.')
+      local word = line:sub(1, col):match('[%w%-]+$')
+      if word and #word >= 2 then
+        vim.api.nvim_feedkeys(
+          vim.api.nvim_replace_termcodes('<C-x><C-k>', true, true, true),
+          'n', false
+        )
+      end
+    end,
+  }})
+
   -- Debug: verify settings
   local dict_setting = vim.opt_local.dictionary:get()
   local complete_setting = vim.opt_local.complete:get()
   vim.api.nvim_echo({{
-    {{ 'Curl autocomplete: Ctrl+Space or Ctrl+X Ctrl+K', 'Normal' }},
-    {{ '  Dictionary: ' .. (dict_setting[1] or 'not set'), 'Comment' }},
-    {{ '  Complete: ' .. table.concat(complete_setting, ','), 'Comment' }}
+    {{ 'Curl autocomplete: type to see suggestions, Tab/Shift-Tab to navigate, Ctrl+Space or Ctrl+X Ctrl+K to trigger manually', 'Normal' }},
   }}, true, {{}})
 end
 
@@ -222,10 +268,35 @@ set backspace=indent,eol,start
 " Enable dictionary completion for curl commands
 set dictionary={dict_file_safe}
 set complete+=k
-set completeopt=menu,menuone,preview
+set completeopt=menu,menuone,noselect
+
+" Tab: if popup visible select next item, else trigger completion or insert tab
+inoremap <expr> <Tab> pumvisible() ? "\\<C-n>" : (col('.') > 1 && getline('.')[col('.')-2] =~# '[a-zA-Z0-9\\-]' ? "\\<C-x>\\<C-k>" : "\\<Tab>")
+inoremap <expr> <S-Tab> pumvisible() ? "\\<C-p>" : "\\<S-Tab>"
+
+" Map Ctrl-Space to trigger dictionary completion
+inoremap <C-Space> <C-x><C-k>
+
+" Auto-trigger dictionary completion while typing
+function! s:AutoComplete()
+  if pumvisible()
+    return
+  endif
+  let l:col = col('.') - 1
+  if l:col < 2
+    return
+  endif
+  let l:line = getline('.')
+  let l:word = matchstr(l:line[0:l:col-1], '[a-zA-Z0-9\\-]\\+$')
+  if len(l:word) >= 2
+    call feedkeys("\\<C-x>\\<C-k>", 'n')
+  endif
+endfunction
+
+autocmd TextChangedI * call s:AutoComplete()
 
 " Show helpful message
-echo "Curl autocomplete available: Press Ctrl+X Ctrl+K in insert mode for completion"
+echo "Curl autocomplete: type to see suggestions, Tab/Shift-Tab to navigate"
 '''
         suffix = '.vimrc'
 
