@@ -106,10 +106,20 @@ def save_history(commands: List[str]) -> None:
     trimmed = combined[-MAX_HISTORY:]
 
     try:
-        with open(history_path, 'w') as f:
-            for cmd in trimmed:
-                f.write(cmd + '\n')
-        # Secure the file
+        # Use os.open with restrictive permissions from the start and avoid
+        # following symlinks where the platform supports O_NOFOLLOW.
+        flags = os.O_WRONLY | os.O_CREAT | os.O_TRUNC
+        if hasattr(os, "O_NOFOLLOW"):
+            flags |= os.O_NOFOLLOW
+        fd = os.open(history_path, flags, 0o600)
+        try:
+            with os.fdopen(fd, 'w') as f:
+                for cmd in trimmed:
+                    f.write(cmd + '\n')
+        except Exception:
+            os.close(fd)
+            raise
+        # Secure the file (for existing files that may have broader perms)
         try:
             os.chmod(history_path, stat.S_IRUSR | stat.S_IWUSR)
         except OSError:
