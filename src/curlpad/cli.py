@@ -269,7 +269,13 @@ def main() -> None:
     # Load user configuration from ~/.curlpadrc
     debug_print("Loading user configuration...")
     config = load_config()
-    debug_print(f"Config loaded: {config}")
+    # Log only configuration keys to avoid leaking sensitive values
+    try:
+        config_keys = list(config.keys())
+    except AttributeError:
+        # Fallback if config is not a mapping; avoid printing raw values
+        config_keys = type(config).__name__
+    debug_print(f"Config loaded; keys: {config_keys}")
 
     # Check dependencies
     # Verifies that curl is installed (required for executing HTTP requests)
