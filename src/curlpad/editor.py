@@ -70,7 +70,7 @@ def sanitize_vim_string(s: str) -> str:
     return s
 
 
-def create_editor_config(target_file: str) -> str:
+def create_editor_config(target_file: str, history: list = None) -> str:
     """
     Create temporary vimrc/lua file with curl completion settings.
     
@@ -111,6 +111,8 @@ def create_editor_config(target_file: str) -> str:
         8. Return config file path
     """
     debug_print(f"create_editor_config called with target_file: {target_file}")
+    if history is None:
+        history = []
     
     # Validate target_file is under temp directory (prevent path traversal)
     target_file_abs = os.path.abspath(target_file)
@@ -130,6 +132,21 @@ def create_editor_config(target_file: str) -> str:
     debug_print("Creating curl dictionary file...")
     dict_file = create_curl_dict()
     debug_print(f"Dictionary file created: {dict_file}")
+
+    # Create history file for editor recall (if history entries exist)
+    history_tmp = None
+    if history:
+        debug_print(f"Creating history temp file with {len(history)} entries...")
+        fd_h, history_tmp = tempfile.mkstemp(suffix=".history")
+        temp_files.append(history_tmp)
+        try:
+            with os.fdopen(fd_h, 'w') as f:
+                for cmd in history:
+                    f.write(cmd + '\n')
+            debug_print(f"History temp file created: {history_tmp}")
+        except OSError as e:
+            debug_print(f"Error writing history temp file: {e}")
+            history_tmp = None
     
     # Detect editor
     debug_print("Detecting available editor...")
@@ -141,13 +158,37 @@ def create_editor_config(target_file: str) -> str:
         debug_print("Sanitizing paths for Lua interpolation...")
         dict_file_safe = sanitize_lua_string(dict_file)
         target_file_safe = sanitize_lua_string(target_file_abs)
+        history_file_safe = sanitize_lua_string(history_tmp) if history_tmp else ''
         debug_print(f"Sanitized dict_file: {len(dict_file_safe)} chars")
         debug_print(f"Sanitized target_file: {len(target_file_safe)} chars")
+        
+        # Build history Lua block
+        if history_tmp:
+            history_lua = f"""
+-- Load command history for recall with Up arrow
+local history_file = [[{history_file_safe}]]
+local history_lines = {{}}
+local hf = io.open(history_file, 'r')
+if hf then
+  for line in hf:lines() do
+    line = line:gsub('%s+$', '')
+    if #line > 0 then
+      table.insert(history_lines, line)
+    end
+  end
+  hf:close()
+end
+"""
+        else:
+            history_lua = """
+local history_lines = {}
+"""
         
         debug_print("Generating Neovim Lua configuration...")
         config_content = f'''-- Neovim Lua configuration for curl completion
 local dict_file = [[{dict_file_safe}]]
 local target_path = [[{target_file_safe}]]
+{history_lua}
 
 -- Enable syntax highlighting
 vim.cmd('syntax on')
@@ -202,6 +243,29 @@ local function setup_buffer(buf)
     return vim.api.nvim_replace_termcodes('<S-Tab>', true, true, true)
   end, {{ buffer = buf, noremap = true, silent = true, expr = true }})
 
+  -- Up arrow: recall previous commands from history
+  if #history_lines > 0 then
+    local hist_index = #history_lines
+    pcall(vim.keymap.set, 'i', '<Up>', function()
+      if hist_index >= 1 then
+        local cmd = history_lines[hist_index]
+        hist_index = math.max(1, hist_index - 1)
+        vim.api.nvim_set_current_line(cmd)
+        vim.cmd('normal! $')
+      end
+      return ''
+    end, {{ buffer = buf, noremap = true, silent = true, expr = true }})
+    pcall(vim.keymap.set, 'i', '<Down>', function()
+      if hist_index < #history_lines then
+        hist_index = hist_index + 1
+        local cmd = history_lines[hist_index]
+        vim.api.nvim_set_current_line(cmd)
+        vim.cmd('normal! $')
+      end
+      return ''
+    end, {{ buffer = buf, noremap = true, silent = true, expr = true }})
+  end
+
   -- Auto-trigger dictionary completion as user types
   if not vim.b[buf].curlpad_autocmd_set then
     vim.api.nvim_create_autocmd('TextChangedI', {{
@@ -228,8 +292,9 @@ local function setup_buffer(buf)
   end
 
   -- Debug: verify settings
+  local hist_msg = #history_lines > 0 and (', Up/Down for history (' .. #history_lines .. ')') or ''
   vim.api.nvim_echo({{
-    {{ 'Curl autocomplete: type to see suggestions, Tab/Shift-Tab to navigate, Ctrl+Space or Ctrl+X Ctrl+K to trigger manually', 'Normal' }},
+    {{ 'Curl autocomplete: type to see suggestions, Tab/Shift-Tab to navigate' .. hist_msg, 'Normal' }},
   }}, true, {{}})
 end
 
@@ -252,8 +317,48 @@ vim.api.nvim_create_autocmd({{ 'BufEnter', 'BufWinEnter' }}, {{
         # Vimscript configuration with sanitized paths
         debug_print("Sanitizing paths for Vimscript interpolation...")
         dict_file_safe = sanitize_vim_string(dict_file)
+        history_file_safe = sanitize_vim_string(history_tmp) if history_tmp else ''
         debug_print(f"Sanitized dict_file: {len(dict_file_safe)} chars")
-        
+
+        # Build history Vimscript block
+        if history_tmp:
+            history_vim = f'''
+" Load command history for recall with Up/Down arrows
+let s:history_lines = readfile("{history_file_safe}")
+let s:hist_index = len(s:history_lines) - 1
+
+function! s:HistoryUp()
+  if len(s:history_lines) == 0
+    return ""
+  endif
+  let l:cmd = s:history_lines[s:hist_index]
+  if s:hist_index > 0
+    let s:hist_index -= 1
+  endif
+  call setline('.', l:cmd)
+  call cursor(line('.'), col('$'))
+  return ""
+endfunction
+
+function! s:HistoryDown()
+  if len(s:history_lines) == 0
+    return ""
+  endif
+  if s:hist_index < len(s:history_lines) - 1
+    let s:hist_index += 1
+  endif
+  let l:cmd = s:history_lines[s:hist_index]
+  call setline('.', l:cmd)
+  call cursor(line('.'), col('$'))
+  return ""
+endfunction
+
+inoremap <buffer> <expr> <Up> <SID>HistoryUp()
+inoremap <buffer> <expr> <Down> <SID>HistoryDown()
+'''
+        else:
+            history_vim = ''
+
         debug_print("Generating Vimscript configuration...")
         config_content = f'''set nocompatible
 syntax on
@@ -295,7 +400,7 @@ function! s:AutoComplete()
 endfunction
 
 autocmd TextChangedI <buffer> call s:AutoComplete()
-
+{history_vim}
 " Show helpful message
 echo "Curl autocomplete: type to see suggestions, Tab/Shift-Tab to navigate"
 '''
@@ -343,7 +448,7 @@ echo "Curl autocomplete: type to see suggestions, Tab/Shift-Tab to navigate"
     return config_tmp
 
 
-def open_editor(tmpfile: str) -> None:
+def open_editor(tmpfile: str, history: list = None) -> None:
     """
     Launch editor (nvim/vim) with template file and autocomplete configuration.
     
@@ -353,6 +458,7 @@ def open_editor(tmpfile: str) -> None:
     
     Args:
         tmpfile: Path to the template file to edit
+        history: Optional list of previous curl commands for recall
         
     Raises:
         SystemExit: If editor launch fails or editor not found
@@ -365,7 +471,10 @@ def open_editor(tmpfile: str) -> None:
         5. Wait for editor to close
         6. Clean up config file
     """
+    if history is None:
+        history = []
     debug_print(f"open_editor called with tmpfile: {tmpfile}")
+    debug_print(f"History entries: {len(history)}")
     
     # editor: Editor name ('nvim' or 'vim')
     # Detected by get_editor() in dependencies.py
@@ -377,7 +486,7 @@ def open_editor(tmpfile: str) -> None:
     # Created by create_editor_config() with curl autocomplete settings
     # Contains editor-specific config (Lua for Neovim, Vimscript for Vim)
     debug_print("Creating editor configuration file...")
-    config_tmp = create_editor_config(tmpfile)
+    config_tmp = create_editor_config(tmpfile, history=history)
     debug_print(f"Editor config created: {config_tmp}")
 
     try:

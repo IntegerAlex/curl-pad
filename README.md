@@ -63,13 +63,37 @@ Artifacts are placed in `dist/`.
 curlpad           # open editor at a scratch file with curl completions
 curlpad --help    # options
 curlpad --version # version
+curlpad --dry-run # edit commands, then show without running
 ```
 
 Inside the editor:
 - Autocomplete triggers automatically as you type (2+ characters)
 - Press Tab / Shift+Tab to navigate completion suggestions (Tab still inserts normal indentation when no completion is available)
 - Ctrl+Space or Ctrl+X Ctrl+K for manual completion trigger
+- Press Up / Down arrows to recall previous commands from history
 - Uncomment/edit example lines, then save and exit to run
+
+### Config file
+
+Create `~/.curlpadrc` to set defaults:
+
+```bash
+# ~/.curlpadrc
+DEFAULT_URL=https://api.example.com
+AUTO_FORMAT_JSON=true
+```
+
+| Setting | Description |
+|---------|-------------|
+| `DEFAULT_URL` | Pre-populate the curl template with this URL |
+| `AUTO_FORMAT_JSON` | Auto-format JSON output with jq (`true`/`false`, default: `true`) |
+
+CLI flags (`--url`, etc.) override config file values.
+
+### History
+
+curlpad saves the last 20 executed commands to `~/.curlpad/history`.
+Use the Up / Down arrows in the editor to recall them.
 
 ### Requirements
 

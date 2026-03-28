@@ -38,9 +38,11 @@ import sys
 from typing import List
 
 from curlpad.commands import extract_commands, format_json_with_jq, run_command, validate_command
+from curlpad.config import load_config
 from curlpad.constants import __version__
 from curlpad.dependencies import check_dependencies, install_deps, get_editor
 from curlpad.editor import open_editor
+from curlpad.history import load_history, save_history
 from curlpad.output import print_error, print_info, print_warning
 from curlpad.templates import create_template_file
 from curlpad import utils
@@ -140,10 +142,12 @@ Options:
   --install       Install missing dependencies (vim, jq)
   --debug         Enable extremely verbose debug output
   --url URL       Pre-populate template with base URL
+  --dry-run       Show final commands without executing them
 
 Examples:
   {sys.argv[0]}                     # Start editor with curl autocomplete
   {sys.argv[0]} --url=https://www.example.com  # Pre-populate with base URL
+  {sys.argv[0]} --dry-run           # Edit commands, then show without running
   {sys.argv[0]} --help              # Show help
   {sys.argv[0]} --version           # Show version
   {sys.argv[0]} --install           # Install vim and jq if missing
@@ -153,7 +157,12 @@ In the editor:
   - Press Tab / Shift+Tab to navigate completion suggestions
     (when no completion is available, Tab still inserts a normal tab/indent)
   - Ctrl+Space or Ctrl+X Ctrl+K for manual completion trigger
+  - Press Up arrow to recall previous commands from history
   - Uncomment and edit the example commands
+
+Config file (~/.curlpadrc):
+  DEFAULT_URL=https://api.example.com
+  AUTO_FORMAT_JSON=true
 
 Dependencies:
   - nvim or vim     : For editing with autocomplete
@@ -217,11 +226,13 @@ def main() -> None:
     # --install: Install missing dependencies (vim, jq) and exit
     # --debug: Enable verbose debug logging throughout the application
     # --url: Pre-populate template with base URL
+    # --dry-run: Show final commands without executing them
     parser.add_argument('--help', '-h', action='store_true')
     parser.add_argument('--version', '-v', action='store_true')
     parser.add_argument('--install', action='store_true')
     parser.add_argument('--debug', action='store_true')
     parser.add_argument('--url', type=str, help='Pre-populate template with base URL (e.g., --url=https://www.example.com)')
+    parser.add_argument('--dry-run', action='store_true', dest='dry_run', help='Show final commands without executing them')
 
     # Parse command-line arguments
     # args: Parsed arguments (contains help, version, install, debug flags)
@@ -255,6 +266,11 @@ def main() -> None:
         install_deps()  # Install vim and jq using platform-specific package managers
         return
 
+    # Load user configuration from ~/.curlpadrc
+    debug_print("Loading user configuration...")
+    config = load_config()
+    debug_print(f"Config loaded: {config}")
+
     # Check dependencies
     # Verifies that curl is installed (required for executing HTTP requests)
     # Raises SystemExit if curl is not found
@@ -262,14 +278,22 @@ def main() -> None:
     check_dependencies()
     debug_print("Dependencies check passed")
 
+    # Determine base URL: CLI --url flag takes precedence over config DEFAULT_URL
+    debug_print("Determining base URL...")
+    base_url = args.url if args.url else config.get('DEFAULT_URL')
+    if base_url:
+        debug_print(f"Base URL: {base_url}")
+
+    # Load command history for the editor
+    debug_print("Loading command history...")
+    history = load_history()
+    debug_print(f"History loaded: {len(history)} entries")
+
     # Create template file
     # Creates a temporary .sh file with commented curl examples
     # Returns: Path to the created template file
     # The file is added to temp_files list for automatic cleanup on exit
     debug_print("Creating template file...")
-    base_url = args.url if args.url else None
-    if base_url:
-        debug_print(f"Base URL provided: {base_url}")
     tmpfile = create_template_file(base_url=base_url)
     debug_print(f"Template file created: {tmpfile}")
 
@@ -279,7 +303,7 @@ def main() -> None:
     # User edits commands in the editor, then saves and exits
     # Control returns to this function after editor closes
     debug_print("Opening editor with autocomplete...")
-    open_editor(tmpfile)
+    open_editor(tmpfile, history=history)
     debug_print("Editor closed, proceeding to extract commands")
 
     # Extract commands from edited template file
@@ -297,13 +321,17 @@ def main() -> None:
         print_warning("No uncommented command found. Exiting.")
         return
 
-    # Format JSON in commands if jq is available
+    # Format JSON in commands if jq is available and AUTO_FORMAT_JSON is not disabled
     # Attempts to format JSON strings in curl commands using jq
     # If jq is not available, returns original commands unchanged
     # This improves readability of JSON payloads in curl commands
-    debug_print("Formatting JSON in commands (if jq available)...")
-    commands = format_json_with_jq(commands)
-    debug_print(f"JSON formatting complete, {len(commands)} command(s) ready")
+    auto_format = config.get('AUTO_FORMAT_JSON', 'true').lower() != 'false'
+    if auto_format:
+        debug_print("Formatting JSON in commands (if jq available)...")
+        commands = format_json_with_jq(commands)
+        debug_print(f"JSON formatting complete, {len(commands)} command(s) ready")
+    else:
+        debug_print("AUTO_FORMAT_JSON disabled in config, skipping JSON formatting")
 
     # Validate commands
     # Checks each command to ensure it's a valid curl command
@@ -330,6 +358,12 @@ def main() -> None:
         debug_print(f"  Command {i}: {cmd[:100]}{'...' if len(cmd) > 100 else ''}")
     print("----------------------------------------")
 
+    # --dry-run: Show commands without executing
+    if args.dry_run:
+        debug_print("Dry run mode: skipping execution")
+        print_info("Dry run — commands were not executed.")
+        return
+
     # Prompt for confirmation
     # Attempts to use stdin for interactive confirmation
     # Falls back to Windows MessageBox if stdin unavailable
@@ -355,4 +389,9 @@ def main() -> None:
         run_command(cmd)
         debug_print(f"Command {i}/{len(commands)} execution complete")
     debug_print("All commands executed successfully")
+
+    # Save commands to history
+    debug_print("Saving commands to history...")
+    save_history(commands)
+    debug_print("History saved")
 
