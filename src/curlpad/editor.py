@@ -70,7 +70,7 @@ def sanitize_vim_string(s: str) -> str:
     return s
 
 
-def create_editor_config(target_file: str) -> str:
+def create_editor_config(target_file: str, history: list = None) -> str:
     """
     Create temporary vimrc/lua file with curl completion settings.
     
@@ -92,6 +92,8 @@ def create_editor_config(target_file: str) -> str:
     Args:
         target_file: Path to the template file being edited
                     Must be under system temp directory
+        history: Optional list of previous curl commands for recall
+                via Up/Down arrows in the editor (default: None)
         
     Returns:
         Path to the created configuration file
@@ -111,6 +113,8 @@ def create_editor_config(target_file: str) -> str:
         8. Return config file path
     """
     debug_print(f"create_editor_config called with target_file: {target_file}")
+    if history is None:
+        history = []
     
     # Validate target_file is under temp directory (prevent path traversal)
     target_file_abs = os.path.abspath(target_file)
@@ -130,6 +134,36 @@ def create_editor_config(target_file: str) -> str:
     debug_print("Creating curl dictionary file...")
     dict_file = create_curl_dict()
     debug_print(f"Dictionary file created: {dict_file}")
+
+    # Create history file for editor recall (if history entries exist)
+    history_tmp = None
+    if history:
+        debug_print(f"Creating history temp file with {len(history)} entries...")
+        fd_h = None
+        try:
+            fd_h, history_tmp = tempfile.mkstemp(suffix=".history")
+            temp_files.append(history_tmp)
+            with os.fdopen(fd_h, 'w') as f:
+                for cmd in history:
+                    f.write(cmd + '\n')
+            debug_print(f"History temp file created: {history_tmp}")
+        except OSError as e:
+            debug_print(f"Error writing history temp file: {e}")
+            # Ensure file descriptor and temp file are cleaned up on failure
+            if fd_h is not None:
+                try:
+                    os.close(fd_h)
+                except OSError:
+                    pass
+            if history_tmp is not None:
+                # Remove from temp_files tracking and delete the partial file
+                try:
+                    if history_tmp in temp_files:
+                        temp_files.remove(history_tmp)
+                    os.unlink(history_tmp)
+                except OSError:
+                    pass
+            history_tmp = None
     
     # Detect editor
     debug_print("Detecting available editor...")
@@ -141,13 +175,37 @@ def create_editor_config(target_file: str) -> str:
         debug_print("Sanitizing paths for Lua interpolation...")
         dict_file_safe = sanitize_lua_string(dict_file)
         target_file_safe = sanitize_lua_string(target_file_abs)
+        history_file_safe = sanitize_lua_string(history_tmp) if history_tmp else ''
         debug_print(f"Sanitized dict_file: {len(dict_file_safe)} chars")
         debug_print(f"Sanitized target_file: {len(target_file_safe)} chars")
+        
+        # Build history Lua block
+        if history_tmp:
+            history_lua = f"""
+-- Load command history for recall with Up arrow
+local history_file = [[{history_file_safe}]]
+local history_lines = {{}}
+local hf = io.open(history_file, 'r')
+if hf then
+  for line in hf:lines() do
+    line = line:gsub('%s+$', '')
+    if #line > 0 then
+      table.insert(history_lines, line)
+    end
+  end
+  hf:close()
+end
+"""
+        else:
+            history_lua = """
+local history_lines = {}
+"""
         
         debug_print("Generating Neovim Lua configuration...")
         config_content = f'''-- Neovim Lua configuration for curl completion
 local dict_file = [[{dict_file_safe}]]
 local target_path = [[{target_file_safe}]]
+{history_lua}
 
 -- Enable syntax highlighting
 vim.cmd('syntax on')
@@ -173,16 +231,89 @@ local function setup_buffer(buf)
   -- Clear and set dictionary
   vim.opt_local.dictionary = {{ dict_file }}
   vim.opt_local.complete:append('k')
-  vim.opt_local.completeopt = {{ 'menu', 'menuone', 'preview' }}
+  vim.opt_local.completeopt = {{ 'menu', 'menuone', 'noselect' }}
+
   -- Map Ctrl-Space to trigger dictionary completion for this buffer
   pcall(vim.keymap.set, 'i', '<C-Space>', '<C-x><C-k>', {{ buffer = buf, noremap = true, silent = true }})
+
+  -- Tab: if popup visible select next item, else trigger dictionary completion if word prefix exists
+  pcall(vim.keymap.set, 'i', '<Tab>', function()
+    if vim.fn.pumvisible() == 1 then
+      return vim.api.nvim_replace_termcodes('<C-n>', true, true, true)
+    end
+    local col = vim.fn.col('.') - 1
+    if col > 0 then
+      local line = vim.fn.getline('.')
+      local char = line:sub(col, col)
+      if char:match('[%w%-]') then
+        return vim.api.nvim_replace_termcodes('<C-x><C-k>', true, true, true)
+      end
+    end
+    return vim.api.nvim_replace_termcodes('<Tab>', true, true, true)
+  end, {{ buffer = buf, noremap = true, silent = true, expr = true }})
+
+  -- Shift-Tab: select previous completion item
+  pcall(vim.keymap.set, 'i', '<S-Tab>', function()
+    if vim.fn.pumvisible() == 1 then
+      return vim.api.nvim_replace_termcodes('<C-p>', true, true, true)
+    end
+    return vim.api.nvim_replace_termcodes('<S-Tab>', true, true, true)
+  end, {{ buffer = buf, noremap = true, silent = true, expr = true }})
+
+  -- Up arrow: recall previous commands from history
+  if #history_lines > 0 then
+    local hist_index = #history_lines + 1
+    pcall(vim.keymap.set, 'i', '<Up>', function()
+      if hist_index > 1 then
+        hist_index = hist_index - 1
+      end
+      local cmd = history_lines[hist_index]
+      if cmd then
+        vim.api.nvim_set_current_line(cmd)
+        vim.cmd('normal! $')
+      end
+      return ''
+    end, {{ buffer = buf, noremap = true, silent = true, expr = true }})
+    pcall(vim.keymap.set, 'i', '<Down>', function()
+      if hist_index < #history_lines then
+        hist_index = hist_index + 1
+        local cmd = history_lines[hist_index]
+        vim.api.nvim_set_current_line(cmd)
+        vim.cmd('normal! $')
+      end
+      return ''
+    end, {{ buffer = buf, noremap = true, silent = true, expr = true }})
+  end
+
+  -- Auto-trigger dictionary completion as user types
+  if not vim.b[buf].curlpad_autocmd_set then
+    vim.api.nvim_create_autocmd('TextChangedI', {{
+      buffer = buf,
+      callback = function()
+        if vim.fn.pumvisible() == 1 then
+          return
+        end
+        local col = vim.fn.col('.') - 1
+        if col < 2 then
+          return
+        end
+        local line = vim.fn.getline('.')
+        local word = line:sub(1, col):match('[%w%-]+$')
+        if word and #word >= 2 then
+          vim.api.nvim_feedkeys(
+            vim.api.nvim_replace_termcodes('<C-x><C-k>', true, true, true),
+            'n', false
+          )
+        end
+      end,
+    }})
+    vim.b[buf].curlpad_autocmd_set = true
+  end
+
   -- Debug: verify settings
-  local dict_setting = vim.opt_local.dictionary:get()
-  local complete_setting = vim.opt_local.complete:get()
+  local hist_msg = #history_lines > 0 and (', Up/Down for history (' .. #history_lines .. ')') or ''
   vim.api.nvim_echo({{
-    {{ 'Curl autocomplete: Ctrl+Space or Ctrl+X Ctrl+K', 'Normal' }},
-    {{ '  Dictionary: ' .. (dict_setting[1] or 'not set'), 'Comment' }},
-    {{ '  Complete: ' .. table.concat(complete_setting, ','), 'Comment' }}
+    {{ 'Curl autocomplete: type to see suggestions, Tab/Shift-Tab to navigate' .. hist_msg, 'Normal' }},
   }}, true, {{}})
 end
 
@@ -205,8 +336,48 @@ vim.api.nvim_create_autocmd({{ 'BufEnter', 'BufWinEnter' }}, {{
         # Vimscript configuration with sanitized paths
         debug_print("Sanitizing paths for Vimscript interpolation...")
         dict_file_safe = sanitize_vim_string(dict_file)
+        history_file_safe = sanitize_vim_string(history_tmp) if history_tmp else ''
         debug_print(f"Sanitized dict_file: {len(dict_file_safe)} chars")
-        
+
+        # Build history Vimscript block
+        if history_tmp:
+            history_vim = f'''
+" Load command history for recall with Up/Down arrows
+let s:history_lines = readfile("{history_file_safe}")
+let s:hist_index = len(s:history_lines)
+
+function! s:HistoryUp()
+  if len(s:history_lines) == 0
+    return ""
+  endif
+  if s:hist_index > 0
+    let s:hist_index -= 1
+  endif
+  let l:cmd = s:history_lines[s:hist_index]
+  call setline('.', l:cmd)
+  call cursor(line('.'), col('$'))
+  return ""
+endfunction
+
+function! s:HistoryDown()
+  if len(s:history_lines) == 0
+    return ""
+  endif
+  if s:hist_index < len(s:history_lines) - 1
+    let s:hist_index += 1
+  endif
+  let l:cmd = s:history_lines[s:hist_index]
+  call setline('.', l:cmd)
+  call cursor(line('.'), col('$'))
+  return ""
+endfunction
+
+inoremap <buffer> <expr> <Up> <SID>HistoryUp()
+inoremap <buffer> <expr> <Down> <SID>HistoryDown()
+'''
+        else:
+            history_vim = ''
+
         debug_print("Generating Vimscript configuration...")
         config_content = f'''set nocompatible
 syntax on
@@ -222,10 +393,35 @@ set backspace=indent,eol,start
 " Enable dictionary completion for curl commands
 set dictionary={dict_file_safe}
 set complete+=k
-set completeopt=menu,menuone,preview
+set completeopt=menu,menuone,noselect
 
+" Tab: if popup visible select next item, else trigger completion or insert tab
+inoremap <buffer> <expr> <Tab> pumvisible() ? "\\<C-n>" : (col('.') > 1 && getline('.')[col('.')-2] =~# '[a-zA-Z0-9\\-]' ? "\\<C-x>\\<C-k>" : "\\<Tab>")
+inoremap <buffer> <expr> <S-Tab> pumvisible() ? "\\<C-p>" : "\\<S-Tab>"
+
+" Map Ctrl-Space to trigger dictionary completion
+inoremap <buffer> <C-Space> <C-x><C-k>
+
+" Auto-trigger dictionary completion while typing
+function! s:AutoComplete()
+  if pumvisible()
+    return
+  endif
+  let l:col = col('.') - 1
+  if l:col < 2
+    return
+  endif
+  let l:line = getline('.')
+  let l:word = matchstr(l:line[0:l:col-1], '[a-zA-Z0-9\\-]\\+$')
+  if len(l:word) >= 2
+    call feedkeys("\\<C-x>\\<C-k>", 'n')
+  endif
+endfunction
+
+autocmd TextChangedI <buffer> call s:AutoComplete()
+{history_vim}
 " Show helpful message
-echo "Curl autocomplete available: Press Ctrl+X Ctrl+K in insert mode for completion"
+echo "Curl autocomplete: type to see suggestions, Tab/Shift-Tab to navigate"
 '''
         suffix = '.vimrc'
 
@@ -271,7 +467,7 @@ echo "Curl autocomplete available: Press Ctrl+X Ctrl+K in insert mode for comple
     return config_tmp
 
 
-def open_editor(tmpfile: str) -> None:
+def open_editor(tmpfile: str, history: list = None) -> None:
     """
     Launch editor (nvim/vim) with template file and autocomplete configuration.
     
@@ -281,6 +477,7 @@ def open_editor(tmpfile: str) -> None:
     
     Args:
         tmpfile: Path to the template file to edit
+        history: Optional list of previous curl commands for recall
         
     Raises:
         SystemExit: If editor launch fails or editor not found
@@ -293,7 +490,10 @@ def open_editor(tmpfile: str) -> None:
         5. Wait for editor to close
         6. Clean up config file
     """
+    if history is None:
+        history = []
     debug_print(f"open_editor called with tmpfile: {tmpfile}")
+    debug_print(f"History entries: {len(history)}")
     
     # editor: Editor name ('nvim' or 'vim')
     # Detected by get_editor() in dependencies.py
@@ -305,7 +505,7 @@ def open_editor(tmpfile: str) -> None:
     # Created by create_editor_config() with curl autocomplete settings
     # Contains editor-specific config (Lua for Neovim, Vimscript for Vim)
     debug_print("Creating editor configuration file...")
-    config_tmp = create_editor_config(tmpfile)
+    config_tmp = create_editor_config(tmpfile, history=history)
     debug_print(f"Editor config created: {config_tmp}")
 
     try:
