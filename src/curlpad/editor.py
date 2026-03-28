@@ -245,11 +245,13 @@ local function setup_buffer(buf)
 
   -- Up arrow: recall previous commands from history
   if #history_lines > 0 then
-    local hist_index = #history_lines
+    local hist_index = #history_lines + 1
     pcall(vim.keymap.set, 'i', '<Up>', function()
-      if hist_index >= 1 then
-        local cmd = history_lines[hist_index]
-        hist_index = math.max(1, hist_index - 1)
+      if hist_index > 1 then
+        hist_index = hist_index - 1
+      end
+      local cmd = history_lines[hist_index]
+      if cmd then
         vim.api.nvim_set_current_line(cmd)
         vim.cmd('normal! $')
       end
@@ -325,16 +327,16 @@ vim.api.nvim_create_autocmd({{ 'BufEnter', 'BufWinEnter' }}, {{
             history_vim = f'''
 " Load command history for recall with Up/Down arrows
 let s:history_lines = readfile("{history_file_safe}")
-let s:hist_index = len(s:history_lines) - 1
+let s:hist_index = len(s:history_lines)
 
 function! s:HistoryUp()
   if len(s:history_lines) == 0
     return ""
   endif
-  let l:cmd = s:history_lines[s:hist_index]
   if s:hist_index > 0
     let s:hist_index -= 1
   endif
+  let l:cmd = s:history_lines[s:hist_index]
   call setline('.', l:cmd)
   call cursor(line('.'), col('$'))
   return ""
