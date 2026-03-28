@@ -157,7 +157,7 @@ In the editor:
   - Press Tab / Shift+Tab to navigate completion suggestions
     (when no completion is available, Tab still inserts a normal tab/indent)
   - Ctrl+Space or Ctrl+X Ctrl+K for manual completion trigger
-  - Press Up arrow to recall previous commands from history
+  - Press Up/Down arrows to browse command history (previous/next commands)
   - Uncomment and edit the example commands
 
 Config file (~/.curlpadrc):
