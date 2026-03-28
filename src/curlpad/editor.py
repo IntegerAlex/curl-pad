@@ -137,15 +137,30 @@ def create_editor_config(target_file: str, history: list = None) -> str:
     history_tmp = None
     if history:
         debug_print(f"Creating history temp file with {len(history)} entries...")
-        fd_h, history_tmp = tempfile.mkstemp(suffix=".history")
-        temp_files.append(history_tmp)
+        fd_h = None
         try:
+            fd_h, history_tmp = tempfile.mkstemp(suffix=".history")
+            temp_files.append(history_tmp)
             with os.fdopen(fd_h, 'w') as f:
                 for cmd in history:
                     f.write(cmd + '\n')
             debug_print(f"History temp file created: {history_tmp}")
         except OSError as e:
             debug_print(f"Error writing history temp file: {e}")
+            # Ensure file descriptor and temp file are cleaned up on failure
+            if fd_h is not None:
+                try:
+                    os.close(fd_h)
+                except OSError:
+                    pass
+            if history_tmp is not None:
+                # Remove from temp_files tracking and delete the partial file
+                try:
+                    if history_tmp in temp_files:
+                        temp_files.remove(history_tmp)
+                    os.unlink(history_tmp)
+                except OSError:
+                    pass
             history_tmp = None
     
     # Detect editor
