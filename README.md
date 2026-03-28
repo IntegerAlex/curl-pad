@@ -67,7 +67,7 @@ curlpad --version # version
 
 Inside the editor:
 - Autocomplete triggers automatically as you type (2+ characters)
-- Press Tab / Shift+Tab to navigate completion suggestions
+- Press Tab / Shift+Tab to navigate completion suggestions (Tab still inserts normal indentation when no completion is available)
 - Ctrl+Space or Ctrl+X Ctrl+K for manual completion trigger
 - Uncomment/edit example lines, then save and exit to run
 
