@@ -40,7 +40,7 @@ from typing import List
 from curlpad.commands import extract_commands, format_json_with_jq, run_command, validate_command
 from curlpad.config import load_config
 from curlpad.constants import __version__
-from curlpad.dependencies import check_dependencies, install_deps, get_editor
+from curlpad.dependencies import check_dependencies, install_deps
 from curlpad.editor import open_editor
 from curlpad.history import load_history, save_history
 from curlpad.output import print_error, print_info, print_warning
