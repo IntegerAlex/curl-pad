@@ -65,7 +65,7 @@ def load_config() -> dict:
 
     debug_print(f"Loading config from: {config_path}")
     try:
-        with open(config_path, 'r') as f:
+        with open(config_path, 'r', encoding='utf-8', errors='replace') as f:
             for lineno, raw_line in enumerate(f, 1):
                 line = raw_line.strip()
                 if not line or line.startswith('#'):
@@ -78,7 +78,7 @@ def load_config() -> dict:
                 value = value.strip()
                 config[key] = value
                 debug_print(f"Config: {key}={value}")
-    except OSError as e:
+    except (OSError, UnicodeDecodeError) as e:
         debug_print(f"Error reading config file: {e}")
 
     debug_print(f"Loaded {len(config)} config setting(s)")

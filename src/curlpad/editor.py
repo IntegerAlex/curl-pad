@@ -92,6 +92,8 @@ def create_editor_config(target_file: str, history: list = None) -> str:
     Args:
         target_file: Path to the template file being edited
                     Must be under system temp directory
+        history: Optional list of previous curl commands for recall
+                via Up/Down arrows in the editor (default: None)
         
     Returns:
         Path to the created configuration file

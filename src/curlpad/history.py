@@ -76,11 +76,11 @@ def load_history() -> List[str]:
 
     debug_print(f"Loading history from: {history_path}")
     try:
-        with open(history_path, 'r') as f:
+        with open(history_path, 'r', encoding='utf-8', errors='replace') as f:
             lines = [line.strip() for line in f if line.strip()]
         debug_print(f"Loaded {len(lines)} history entries")
         return lines[-MAX_HISTORY:]
-    except OSError as e:
+    except (OSError, UnicodeDecodeError) as e:
         debug_print(f"Error reading history file: {e}")
         return []
 
