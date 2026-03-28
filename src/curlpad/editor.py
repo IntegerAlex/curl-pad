@@ -203,26 +203,29 @@ local function setup_buffer(buf)
   end, {{ buffer = buf, noremap = true, silent = true, expr = true }})
 
   -- Auto-trigger dictionary completion as user types
-  vim.api.nvim_create_autocmd('TextChangedI', {{
-    buffer = buf,
-    callback = function()
-      if vim.fn.pumvisible() == 1 then
-        return
-      end
-      local col = vim.fn.col('.') - 1
-      if col < 2 then
-        return
-      end
-      local line = vim.fn.getline('.')
-      local word = line:sub(1, col):match('[%w%-]+$')
-      if word and #word >= 2 then
-        vim.api.nvim_feedkeys(
-          vim.api.nvim_replace_termcodes('<C-x><C-k>', true, true, true),
-          'n', false
-        )
-      end
-    end,
-  }})
+  if not vim.b[buf].curlpad_autocmd_set then
+    vim.api.nvim_create_autocmd('TextChangedI', {{
+      buffer = buf,
+      callback = function()
+        if vim.fn.pumvisible() == 1 then
+          return
+        end
+        local col = vim.fn.col('.') - 1
+        if col < 2 then
+          return
+        end
+        local line = vim.fn.getline('.')
+        local word = line:sub(1, col):match('[%w%-]+$')
+        if word and #word >= 2 then
+          vim.api.nvim_feedkeys(
+            vim.api.nvim_replace_termcodes('<C-x><C-k>', true, true, true),
+            'n', false
+          )
+        end
+      end,
+    }})
+    vim.b[buf].curlpad_autocmd_set = true
+  end
 
   -- Debug: verify settings
   vim.api.nvim_echo({{
