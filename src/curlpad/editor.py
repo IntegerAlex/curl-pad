@@ -293,7 +293,7 @@ function! s:AutoComplete()
   endif
 endfunction
 
-autocmd TextChangedI * call s:AutoComplete()
+autocmd TextChangedI <buffer> call s:AutoComplete()
 
 " Show helpful message
 echo "Curl autocomplete: type to see suggestions, Tab/Shift-Tab to navigate"
